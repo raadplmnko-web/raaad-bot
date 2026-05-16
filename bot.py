@@ -4,67 +4,87 @@ import logging
 import requests
 import pandas as pd
 import numpy as np
-import yfinance as yf
 from datetime import datetime
 import pytz
 
 # ========== الإعدادات ==========
 TELEGRAM_TOKEN = "8809048554:AAHFEB7U68hSPydldzQZ5a2TQ205plJ3JKA"
 CHAT_ID = "687056332"
-MAX_PRICE = 10.0  # فقط أسهم أقل من 10 دولار
-CHECK_INTERVAL = 300  # كل 5 دقائق
+FINNHUB_KEY = "d6fnilhr01qqnmbpbjc0d6fnilhr01qqnmbpbjcg"
+MAX_PRICE = 10.0
+CHECK_INTERVAL = 300
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ========== قائمة الأسهم الأمريكية الرخيصة ==========
 WATCHLIST = [
     "SNDL","CLOV","EXPR","AMC","BBIG","MMAT","NKLA","RIDE","WKHS",
-    "SPCE","FFIE","MULN","IDEX","CENN","ILUS","NAKD","SIGA","ZNGA",
-    "SENS","GNUS","IMPP","PROG","ATER","BBBY","SKLZ","WATT","CLVS",
-    "BNGO","SOLO","XELA","BNED","ACST","FCEL","BLNK","PLUG","NRXP",
-    "PRTY","BKKT","OPAD","CIFS","AULT","ENOB","NUVB","ABIO","MGAM",
-    "KPLT","BOXD","MVST","SMFL","GFAI","DPRO","PNTM","MOGO","CODA",
-    "FXLV","ATXI","CREX","MOXC","INPX","CRBP","DARE","PRPO","AIOT",
-    "CODA","ABSI","APCX","HOFV","JBDI","LGVN","MATH","NLIT","RNXT"
+    "SPCE","FFIE","MULN","IDEX","CENN","NAKD","SIGA","SENS","GNUS",
+    "IMPP","PROG","ATER","SKLZ","WATT","CLVS","BNGO","SOLO","XELA",
+    "BNED","ACST","FCEL","BLNK","PLUG","NRXP","PRTY","BKKT","OPAD",
+    "CIFS","AULT","ENOB","NUVB","ABIO","KPLT","MVST","GFAI","DPRO",
+    "MOGO","FXLV","ATXI","CREX","INPX","CRBP","DARE","PRPO","AIOT",
+    "ABSI","APCX","HOFV","LGVN","RNXT","ANY","EZFL","HCDI","KULR"
 ]
 
-# ========== إرسال رسالة تيليغرام ==========
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML"
-    }
+    data = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
     try:
         r = requests.post(url, data=data, timeout=10)
         if r.status_code == 200:
-            logger.info("✅ تم إرسال الرسالة")
+            logger.info("✅ تم الإرسال")
         else:
-            logger.error(f"❌ خطأ في الإرسال: {r.text}")
+            logger.error(f"❌ خطأ: {r.text}")
     except Exception as e:
-        logger.error(f"❌ استثناء: {e}")
+        logger.error(f"❌ {e}")
 
-# ========== حساب المؤشر ==========
+def get_realtime_price(ticker):
+    try:
+        url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_KEY}"
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        price = data.get("c", 0)
+        return price if price and price > 0 else None
+    except:
+        return None
+
+def get_candles(ticker, days=60):
+    try:
+        now = int(time.time())
+        from_time = now - (days * 24 * 3600)
+        url = f"https://finnhub.io/api/v1/stock/candle?symbol={ticker}&resolution=D&from={from_time}&to={now}&token={FINNHUB_KEY}"
+        r = requests.get(url, timeout=8)
+        data = r.json()
+        if data.get("s") != "ok":
+            return None
+        df = pd.DataFrame({
+            "close":  data["c"],
+            "high":   data["h"],
+            "low":    data["l"],
+            "open":   data["o"],
+            "volume": data["v"],
+        })
+        return df
+    except:
+        return None
+
 def calculate_signals(ticker):
     try:
-        df = yf.download(ticker, period="3mo", interval="1d", progress=False, auto_adjust=True)
+        current_price = get_realtime_price(ticker)
+        if not current_price or current_price > MAX_PRICE:
+            return None
+
+        df = get_candles(ticker, days=60)
         if df is None or len(df) < 35:
             return None
 
-        close = df['Close'].squeeze()
-        high  = df['High'].squeeze()
-        low   = df['Low'].squeeze()
-        volume= df['Volume'].squeeze()
-        open_ = df['Open'].squeeze()
+        close  = df["close"]
+        high   = df["high"]
+        low    = df["low"]
+        open_  = df["open"]
+        volume = df["volume"]
 
-        # السعر الحالي
-        current_price = float(close.iloc[-1])
-        if current_price > MAX_PRICE or current_price <= 0:
-            return None
-
-        # ATR
         tr = pd.concat([
             high - low,
             (high - close.shift()).abs(),
@@ -72,57 +92,51 @@ def calculate_signals(ticker):
         ], axis=1).max(axis=1)
         atr = tr.rolling(14).mean().iloc[-1]
 
-        # EMA9
         ema9 = close.ewm(span=9, adjust=False).mean()
 
-        # MFI (7)
         tp = (high + low + close) / 3
         mf = tp * volume
         pos_mf = mf.where(tp > tp.shift(), 0).rolling(7).sum()
         neg_mf = mf.where(tp < tp.shift(), 0).rolling(7).sum()
         mfi = (100 - 100 / (1 + pos_mf / neg_mf.replace(0, np.nan))).iloc[-1]
 
-        # المقاومة والدعم
-        res_val = high.iloc[-31:-1].max()
-        sup_val = low.iloc[-31:-1].min()
+        res_val   = high.iloc[-31:-1].max()
+        sup_val   = low.iloc[-31:-1].min()
         stop_loss = min(sup_val, low.iloc[-11:-1].min()) - (atr * 0.5)
 
-        # الحجم
-        avg_vol    = volume.rolling(20).mean().iloc[-1]
+        avg_vol     = volume.rolling(20).mean().iloc[-1]
         is_high_vol = volume.iloc[-1] > avg_vol * 1.5
         is_mega_vol = volume.iloc[-1] > avg_vol * 2.5
 
-        # الاختراق
-        is_breakout = (close.iloc[-1] > res_val) and (close.iloc[-2] <= res_val) and is_high_vol
+        price = current_price
 
-        # الإشارات
+        is_breakout  = (price > res_val) and is_high_vol
         is_adventure = (is_breakout or (is_mega_vol and close.iloc[-1] > open_.iloc[-1])) and mfi > 45
-        is_super_buy = (ema9.iloc[-2] >= close.iloc[-2]) and (ema9.iloc[-1] < close.iloc[-1]) and close.iloc[-1] > res_val * 0.98 and mfi > 50
+        is_super_buy = (ema9.iloc[-2] >= close.iloc[-2]) and (price > ema9.iloc[-1]) and price > res_val * 0.98 and mfi > 50
         is_dip_buy   = low.iloc[-1] <= sup_val * 1.01 and (min(open_.iloc[-1], close.iloc[-1]) - low.iloc[-1]) > abs(close.iloc[-1] - open_.iloc[-1]) * 0.6
-        is_exit      = ((close.iloc[-2] >= ema9.iloc[-2]) and (close.iloc[-1] < ema9.iloc[-1])) or close.iloc[-1] < stop_loss
+        is_exit      = (price < ema9.iloc[-1]) or price < stop_loss
 
-        target1  = current_price + (atr * 1.2)
-        target_g = current_price + (atr * 3.0)
+        target1  = price + (atr * 1.2)
+        target_g = price + (atr * 3.0)
 
         return {
             "ticker": ticker,
-            "price": current_price,
-            "mfi": round(mfi, 1),
-            "res": round(res_val, 3),
-            "sup": round(sup_val, 3),
-            "stop": round(stop_loss, 3),
-            "t1": round(target1, 3),
-            "tg": round(target_g, 3),
-            "is_adventure": is_adventure,
-            "is_super_buy": is_super_buy,
-            "is_dip_buy": is_dip_buy,
-            "is_exit": is_exit,
+            "price":  price,
+            "mfi":    round(float(mfi), 1),
+            "res":    round(float(res_val), 3),
+            "sup":    round(float(sup_val), 3),
+            "stop":   round(float(stop_loss), 3),
+            "t1":     round(float(target1), 3),
+            "tg":     round(float(target_g), 3),
+            "is_adventure": bool(is_adventure),
+            "is_super_buy": bool(is_super_buy),
+            "is_dip_buy":   bool(is_dip_buy),
+            "is_exit":      bool(is_exit),
         }
     except Exception as e:
         logger.debug(f"خطأ في {ticker}: {e}")
         return None
 
-# ========== الرسالة ==========
 def format_message(sig, signal_type):
     emoji_map = {
         "adventure": "🔥 مغامرة",
@@ -131,13 +145,12 @@ def format_message(sig, signal_type):
         "exit":      "🛑 خروج",
     }
     label = emoji_map.get(signal_type, "📢 إشارة")
-
     msg = f"""
 <b>رادار رعد الأسطوري ⚡</b>
 ━━━━━━━━━━━━━━━
 📌 السهم: <b>${sig['ticker']}</b>
 🏷 الإشارة: <b>{label}</b>
-💰 السعر: <b>${sig['price']:.3f}</b>
+💰 السعر الفوري: <b>${sig['price']:.3f}</b>
 ━━━━━━━━━━━━━━━
 📊 السيولة (MFI): {sig['mfi']}%
 📈 المقاومة: ${sig['res']}
@@ -150,22 +163,23 @@ def format_message(sig, signal_type):
 """
     return msg.strip()
 
-# ========== الحلقة الرئيسية ==========
 def main():
-    send_telegram("🚀 <b>رادار رعد الأسطوري يعمل الآن!</b>\n\nسأراقب الأسهم الأمريكية تحت $10 وأرسل الإشارات فوراً ⚡")
+    send_telegram("🚀 <b>رادار رعد الأسطوري يعمل الآن!</b>\n\n⚡ بيانات فورية عبر Finnhub\nسأراقب الأسهم الأمريكية تحت $10 وأرسل الإشارات فوراً!")
     logger.info("✅ البوت بدأ")
 
-    sent_signals = {}  # لتجنب التكرار
+    sent_signals = {}
 
     while True:
-        now_et = datetime.now(pytz.timezone('US/Eastern'))
-        hour = now_et.hour
+        now_et  = datetime.now(pytz.timezone('US/Eastern'))
+        hour    = now_et.hour
+        minute  = now_et.minute
         weekday = now_et.weekday()
 
-        # شغّل فقط في أوقات السوق (9:30 - 16:00 ET، الإثنين-الجمعة)
-        is_market_hours = (weekday < 5) and ((hour == 9 and now_et.minute >= 30) or (10 <= hour < 16))
+        is_market = (weekday < 5) and (
+            (hour == 9 and minute >= 30) or (10 <= hour < 16)
+        )
 
-        if not is_market_hours:
+        if not is_market:
             logger.info(f"⏸ السوق مغلق - {now_et.strftime('%H:%M ET %A')}")
             time.sleep(60)
             continue
@@ -175,6 +189,7 @@ def main():
         for ticker in WATCHLIST:
             sig = calculate_signals(ticker)
             if not sig:
+                time.sleep(0.5)
                 continue
 
             signals_found = []
@@ -184,14 +199,15 @@ def main():
             if sig['is_exit']:       signals_found.append("exit")
 
             for stype in signals_found:
-                key = f"{ticker}_{stype}_{now_et.date()}"
-                # لا ترسل نفس الإشارة أكثر من مرة في اليوم
+                key  = f"{ticker}_{stype}_{now_et.date()}"
                 last = sent_signals.get(key, 0)
-                if time.time() - last > 3600:  # مرة كل ساعة كحد أقصى
+                if time.time() - last > 3600:
                     msg = format_message(sig, stype)
                     send_telegram(msg)
                     sent_signals[key] = time.time()
                     time.sleep(1)
+
+            time.sleep(0.8)
 
         logger.info(f"✅ انتهى الفحص - انتظار {CHECK_INTERVAL//60} دقائق")
         time.sleep(CHECK_INTERVAL)
