@@ -96,20 +96,20 @@ def calculate_adx(df, period=7):
         return pd.Series(20.0, index=df.index)
 
 def get_active_market_stocks():
-    """ باقة الأسهم المنقحة والمطهرة تماماً من الرموز المعطلة كـ BTCM """
+    """ باقة الأسهم المنقحة والمطهرة تماماً من الرموز الموقوفة مثل SAVE و BTCM """
     clean_stocks = [
         "SIRI", "SOUN", "BBAI", "PLTR", "LCID", "NIO", "MARA", "RIOT", "CLSK", "WULF", 
         "HIVE", "BITF", "GOEV", "MULN", "XPEV", "LI", "FFIE", "LAZR", "WKHS", "PLUG", 
         "FCEL", "RUN", "BLNK", "AMC", "GME", "BB", "TLRY", "SNDL", "CGC", "SOFI", 
         "HOOD", "NU", "UPST", "AFRM", "OPEN", "DNA", "RNXT", "NUGT", "NKLA",
-        "RUM", "CRDO", "PATH", "AI", "VERI", "CXAI", "SAVE", "JBLU", "CIFR", "ANY", 
+        "RUM", "CRDO", "PATH", "AI", "VERI", "CXAI", "JBLU", "CIFR", "ANY", 
         "SDG", "CAN", "IREN", "GNE", "AMPS", "BE", "CHPT", "EVGO", "SOLO", 
         "NVAX", "OCGN", "TNXP", "GNS", "XELA", "COSM", "CEI", "IMPP", "HUSA", "INDO", 
         "SNAP", "PTON", "GRWG", "ACB", "OGI", "FUBO", "RIG", "VALE", "AAL"
     ]
     return list(set(clean_stocks))
 
-logging.info("🚀 رادار رعد الأسطوري V26 (إصلاح شامل لجلب أسعار البني ستوكس في البري ماركت)...")
+logging.info("🚀 رادار رعد الأسطوري V26 (حصانة كاملة ضد الرموز المعطلة 404)...")
 
 while True:
     try:
@@ -136,6 +136,7 @@ while True:
         scanned_count = 0  
         
         for s in active_stocks:
+            # طوق حماية داخلي لكل سهم على حدة لضمان عدم انهيار الدورة بالكامل عند حدوث خطأ 404
             try:
                 ticker = yf.Ticker(s)
                 df = ticker.history(period="3d", interval="15m", include_prepost=True)
@@ -143,20 +144,20 @@ while True:
                 if df.empty or len(df) < 10: 
                     continue
                 
-                # تأمين قراءة السعر الأخير في شاشات الـ Pre-Market لتجنب الـ NaN
+                # جلب السعر الأخير بأمان لضمان قراءة البري ماركت والافتتاح
                 last_price = df['Close'].iloc[-1]
                 if pd.isna(last_price) or last_price is None:
-                    last_price = df['Open'].iloc[-1] # تراجع ذكي في حال لم تنفذ شمعة إغلاق
+                    last_price = df['Open'].iloc[-1]
                     
                 prev_price = df['Close'].iloc[-2]
                 if pd.isna(prev_price) or prev_price is None:
                     prev_price = df['Open'].iloc[-2]
                 
-                # التحقق النهائي الآمن من الأسعار ومطابقتها لشرط 10$ وتحت
+                # شرط السقف السعري (10 دولار وتحت)
                 if pd.isna(last_price) or last_price >= 10.0 or last_price <= 0.1:
                     continue
                 
-                # إضافة السهم للعداد بنجاح بعد تجاوز فحص السعر
+                # زيادة العداد فور تخطي الفحوصات الأساسية بنجاح
                 scanned_count += 1
                 
                 # حساب الأساسيات الفنية V26 للرادار
@@ -223,28 +224,4 @@ while True:
                         f"{alert_emoji} *إشارة: {signal_type}* {alert_emoji}\n\n"
                         f"🔹 *السهم المكتشف:* `{s}`\n"
                         f"⏰ *توقيت ومرحلة السوق:* {market_phase}\n"
-                        f"📊 *سرعة صعود السعر ROC:* `{roc_val:.1f}%`\n"
-                        f"🌊 *سيولة التدفق MFI:* `{mfi_val:.0f}%`\n"
-                        f"🎯 *قوة مؤشر الـ RSI:* `{rsi_val:.0f}`\n"
-                        f"💪 *قوة الترند ADX:* `{adx_val:.0f}`\n"
-                        f"----------------------------------\n"
-                        f"🟢 **سعر الدخول الفوري:** `${last_price:.2f}`\n"
-                        f"🛑 **وقف الخسارة الجسداني:** `${stop_loss:.2f}`\n"
-                        f"🎯 **الهدف السريع الأول:** `${target1:.2f}`\n"
-                        f"🎯 **الهدف الإستراتيجي الثاني:** `${target2:.2f}`\n"
-                        f"🏆 **الهدف الذهبي البعيد:** `${target_gold:.2f}`\n"
-                        f"----------------------------------\n"
-                        f"📈 *رادار رعد V26:* فحص نشط ومؤمن لأسهم تحت 10$!"
-                    )
-                    send_msg(alert_text)
-                    logging.info(f"✅ [تم الإرسال] قنص إشارة {signal_type} للسهم: {s}")
-                    
-            except Exception as e:
-                continue
-                
-        logging.info(f"🔄 [{market_phase}] بنجاح فحص وتحليل {scanned_count} سهم نشط حالياً...")
-        time.sleep(60)
-        
-    except Exception as e:
-        logging.error(f"خطأ في الدورة الرئيسية: {e}")
-        time.sleep(10)
+                        f"📊 *سرعة صعود السعر ROC:* `{roc_val
