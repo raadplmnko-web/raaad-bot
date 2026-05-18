@@ -5,11 +5,8 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# التوكن الجديد والصحيح 100% الخاص ببوتك
+# التوكن الصحيح والـ ID الخاص بك
 TELEGRAM_TOKEN = "8809048554:AAHFEB7U68hSPydldzQZ5a2TQ205plJ3JKA"
-
-# رقم الـ ID الخاص بحسابك الشخصي (اللي استخرجته من userinfobot)
-# امسح الرقم اللي بالأسفل وضَع رقم الـ ID الخاص بك بالملي لكي تصلك الرسائل في الخاص
 CHAT_ID = "687056332"
 
 def send_msg(text):
@@ -20,45 +17,46 @@ def send_msg(text):
     except Exception as e:
         logging.error(f"خطأ إرسال تلجرام: {e}")
 
-def get_finviz_signals():
-    # سحب الأسهم الأكثر صعوداً وفوليوم (Top Gainers) لحظياً من أقوى ممسح سوق مفتوح
-    url = "https://screener.finance.api.tickeron.com/screener/api/v1/stocks/top-gainers"
+def get_live_market_data():
+    # رابط خفيف وسريع جداً لجلب حالة أسهم الماركت النشطة فوراً
+    url = "https://query1.finance.yahoo.com/v1/finance/scrumb/screener/tokens/most_actives"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+    }
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            stocks = data.get('stocks', [])
+            quotes = data.get('finance', {}).get('result', [{}])[0].get('quotes', [])
             
             scanned_count = 0
-            for stock in quotes if 'quotes' in locals() else stocks[:15]: # فحص أعلى 15 سهم مشتعل في السوق حالياً
-                ticker = stock.get('ticker', '').upper()
-                price = float(stock.get('price', 0))
-                change_percent = float(stock.get('changeFromClose', 0)) * 100
+            for stock in quotes:
+                ticker = stock.get('symbol', '').upper()
+                price = stock.get('regularMarketPrice')
+                change_percent = stock.get('regularMarketChangePercent')
                 
-                # التصفية الملكية: السعر تحت 30 دولار والصعود إيجابي أعلى من 1%
+                if not ticker or price is None or change_percent is None:
+                    continue
+                
+                # تصفية رادار رعد: أسهم بين 1$ و 30$ وصعود أعلى من 1% لقنص الزخم
                 if 1.0 <= price <= 30.0 and change_percent > 1.0:
                     scanned_count += 1
-                    alert_text = f"🔥 *رادار رعد: اقتناص سهم زخم صاعد* 🔥\n\n" \
+                    alert_text = f"🔥 *رادار رعد: اقتناص سهم فوليوم* 🔥\n\n" \
                                  f"🔹 *السهم المكتشف:* `{ticker}`\n" \
                                  f"🟢 **السعر اللحظي:** `${price:.2f}`\n" \
-                                 f"📈 **نسبة الارتفاع اللحظي:** `+{change_percent:.2f}%`\n" \
+                                 f"📈 **نسبة الارتفاع:** `+{change_percent:.2f}%`\n" \
                                  f"----------------------------------\n" \
-                                 f"🎯 *الوضع:* تدفق سيولة نشط واختراق فني بالماركت الحين!"
+                                 f"🎯 *الوضع:* سيولة نشطة بالماركت الحين!"
                     send_msg(alert_text)
-                    time.sleep(1) # فاصل زمني بسيط لتجنب ضغط الرسائل
-            
-            logging.info(f"🔄 فحص السوق بنجاح واكتشاف {scanned_count} أسهم طائرة.")
-        else:
-            logging.warning("تنشيط القنص الاحتياطي المباشر...")
-            
+            logging.info(f"🔄 تم فحص السوق بنجاح واكتشاف {scanned_count} أسهم.")
     except Exception as e:
-        logging.error(f"خطأ أثناء قراءة السوق: {e}")
+        logging.error(f"خطأ أثناء جلب البيانات: {e}")
 
-logging.info("🚀 رادار الزخم والمفاجآت الفنية انطلق بأعلى كفاءة...")
+logging.info("🚀 تشغيل رادار رعد الأساسي والمحدث...")
 
-# إرسال رسالة ترحيبية فورية للتأكد من ربط التلجرام فوراً عند تشغيل السيرفر
-send_msg("🚀 *تم تشغيل رادار رعد الفولاذي المحدث بنجاح!* \nالسيرفر متصل الآن بحسابك وسيبدأ بضخ الأسهم الساخنة فوراً.")
+# رسالة الفحص الفوري (ستصلك في التلجرام فور تشغيل السيرفر للتأكد من الربط)
+send_msg("🚀 *تم تشغيل رادار رعد بنجاح!*\n\nالربط سليم 100% والتوكن صحيح، الرادار جاري فحص الأسهم الحية بالخلفية الحين...")
 
 while True:
-    get_finviz_signals()
+    get_live_market_data()
     time.sleep(180)
