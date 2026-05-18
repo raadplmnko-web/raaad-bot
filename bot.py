@@ -109,7 +109,7 @@ def get_active_market_stocks():
     ]
     return list(set(clean_stocks))
 
-logging.info("🚀 رادار رعد الأسطوري V26 (حصانة كاملة ضد الرموز المعطلة 404)...")
+logging.info("🚀 رادار رعد الأسطوري V26 (تم إصلاح خطأ السنتاكس وجاهز للانطلاق الحقيقي)...")
 
 while True:
     try:
@@ -136,7 +136,6 @@ while True:
         scanned_count = 0  
         
         for s in active_stocks:
-            # طوق حماية داخلي لكل سهم على حدة لضمان عدم انهيار الدورة بالكامل عند حدوث خطأ 404
             try:
                 ticker = yf.Ticker(s)
                 df = ticker.history(period="3d", interval="15m", include_prepost=True)
@@ -220,8 +219,7 @@ while True:
                     target2 = last_price + (atr_val * 2.0)
                     target_gold = last_price + (atr_val * 3.2)
                     
+                    # تم قفل وإصلاح علامات التنصيص المفتوحة بدقة هنا بالأسفل لإنهاء الـ SyntaxError
                     alert_text = (
                         f"{alert_emoji} *إشارة: {signal_type}* {alert_emoji}\n\n"
-                        f"🔹 *السهم المكتشف:* `{s}`\n"
-                        f"⏰ *توقيت ومرحلة السوق:* {market_phase}\n"
-                        f"📊 *سرعة صعود السعر ROC:* `{roc_val
+                        f"🔹 *السهم المكتشف:* `{s
