@@ -58,13 +58,14 @@ def calculate_atr(df, period=14):
         return pd.Series(0.1, index=df.index)
 
 def get_active_market_stocks():
-    """ جلب ذكي وحي للأسهم الأكثر نشاطاً وديناميكية لتغطية ما قبل السوق بدقة """
+    """ جلب ديناميكي شامل لأكثر الأسهم حركة ونشاطاً تغطي فترة ما قبل السوق والسوق الرسمي """
     discovered_stocks = []
-    # الفرز الأول: الأكثر نشاطاً بحجم التداول
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    # 1. جلب الأكثر نشاطاً بحجم التداول
     try:
-        url_actives = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&screenerId=most_actives&count=40"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url_actives, headers=headers).json()
+        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&screenerId=most_actives&count=50"
+        res = requests.get(url, headers=headers).json()
         quotes = res.get('finance', {}).get('result', [{}])[0].get('quotes', [])
         for q in quotes:
             symbol = q.get('symbol')
@@ -73,10 +74,10 @@ def get_active_market_stocks():
     except:
         pass
 
-    # الفرز الثاني: الأسهم الأكثر صعوداً (Gainers) لاقتناص انفجارات الفجر الصباحية
+    # 2. جلب الأسهم الأكثر صعوداً لاقتناص طفرات الصباح
     try:
-        url_gainers = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&screenerId=day_gainers&count=40"
-        res = requests.get(url_gainers, headers={'User-Agent': 'Mozilla/5.0'}).json()
+        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&screenerId=day_gainers&count=50"
+        res = requests.get(url, headers=headers).json()
         quotes = res.get('finance', {}).get('result', [{}])[0].get('quotes', [])
         for q in quotes:
             symbol = q.get('symbol')
@@ -87,7 +88,7 @@ def get_active_market_stocks():
 
     return list(set(discovered_stocks))
 
-logging.info("🚀 رادار رعد الاحترافي V25 انطلق لمسح الـ Pre-Market والسوق الرسمي بالثانية...")
+logging.info("🚀 رادار رعد الأسطوري المطور (فحص على مدار الساعة) بدأ العمل بنجاح...")
 
 while True:
     try:
@@ -99,11 +100,13 @@ while True:
         
         time_float = current_hour + (current_minute / 60.0)
         
+        # حماية عطلة نهاية الأسبوع فقط
         if current_day in ['Saturday', 'Sunday']:
             logging.info(f"السوق مغلق عطلة نهاية الأسبوع ({current_day})...")
             time.sleep(60)
             continue
             
+        # تحديد اسم الفترة بشكل توضيحي فقط دون تعطيل المسح
         market_phase = "السوق الرسمي 🟢"
         if time_float < 9.5:
             market_phase = "ما قبل السوق (Pre-Market) 🌅"
@@ -111,21 +114,21 @@ while True:
             market_phase = "ما بعد السوق (After-Hours) 🌙"
             
         active_stocks = get_active_market_stocks()
-        logging.info(f"🔄 [{market_phase}] جاري مسح السوق الآن وفحص إشارة رعد لـ {len(active_stocks)} سهم...")
+        logging.info(f"🔄 [{market_phase}] جاري مسح السوق وفحص إشارة رعد لـ {len(active_stocks)} سهم حركي...")
         
         for s in active_stocks:
             try:
                 ticker = yf.Ticker(s)
-                # سحب بيانات الـ 15 دقيقة الشاملة للـ Pre-market بالكامل
+                # سحب داتا حية شاملة لفترات ما قبل السوق
                 df = ticker.history(period="3d", interval="15m", include_prepost=True)
-                if df.empty or len(df) < 15: continue
+                if df.empty or len(df) < 20: continue
                 
-                # جلب السعر الحالي الحقيقي سواء في البري ماركت أو السوق الرسمي
+                # قراءة السعر الحالي اللحظي بدقة
                 info = ticker.fast_info
                 last_price = info.get('lastPrice') if info.get('lastPrice') else df['Close'].iloc[-1]
                 
-                # شروط الفرز الأساسية لـ "رعد": أسهم تحت الـ 10 دولار
-                if last_price is None or last_price >= 10.0 or last_price <= 0.2:
+                # التصفية السعرية: أسهم تحت الـ 10 دولار
+                if last_price is None or last_price >= 10.0 or last_price <= 0.1:
                     continue
                 
                 df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
@@ -149,9 +152,9 @@ while True:
                 if pd.isna(res_val) or pd.isna(mfi_val) or pd.isna(atr_val): 
                     continue
                 
-                # الفحص الفني الذكي لاختراق المتوسط والسيولة
+                # تطبيق استراتيجية "دخول رعد" الفنية
                 is_crossover = prev_price <= prev_ema9 and last_price > ema9_val
-                is_near_res = last_price > (res_val * 0.95) # توسيع النطاق قليلاً في البري ماركت لاقتناص الفوليوم المفاجئ
+                is_near_res = last_price > (res_val * 0.96)
                 is_high_mfi = mfi_val > 45
                 
                 if is_crossover and is_near_res and is_high_mfi:
@@ -172,7 +175,7 @@ while True:
                         f"🎯 **الهدف الأول:** `${target1:.2f}`\n"
                         f"🏆 **الهدف الذهبي:** `${target_gold:.2f}`\n"
                         f"----------------------------------\n"
-                        f"📈 *الرادار:* مستوفي الشروط، ومطابق للشاشة تماماً!"
+                        f"📈 *الرادار:* مستوفي الشروط، وجاهز للقنص الفوري!"
                     )
                     send_msg(alert_text)
                     logging.info(f"✅ تم قنص وإرسال إشارة دخول رعد للسهم: {s}")
@@ -183,5 +186,5 @@ while True:
     except Exception as e:
         logging.error(f"خطأ في الدورة الرئيسية: {e}")
         
-    # التحديث السريع والنشط كل دقيقة
+    # فحص سريع ومستمر كل دقيقة واحدة لمواكبة سرعة فترات التداول
     time.sleep(60)
