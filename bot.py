@@ -58,37 +58,16 @@ def calculate_atr(df, period=14):
         return pd.Series(0.1, index=df.index)
 
 def get_active_market_stocks():
-    """ جلب ديناميكي شامل لأكثر الأسهم حركة ونشاطاً تغطي فترة ما قبل السوق والسوق الرسمي """
-    discovered_stocks = []
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    # 1. جلب الأكثر نشاطاً بحجم التداول
-    try:
-        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&screenerId=most_actives&count=50"
-        res = requests.get(url, headers=headers).json()
-        quotes = res.get('finance', {}).get('result', [{}])[0].get('quotes', [])
-        for q in quotes:
-            symbol = q.get('symbol')
-            if symbol and "^" not in symbol and "=" not in symbol:
-                discovered_stocks.append(symbol)
-    except:
-        pass
-
-    # 2. جلب الأسهم الأكثر صعوداً لاقتناص طفرات الصباح
-    try:
-        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&screenerId=day_gainers&count=50"
-        res = requests.get(url, headers=headers).json()
-        quotes = res.get('finance', {}).get('result', [{}])[0].get('quotes', [])
-        for q in quotes:
-            symbol = q.get('symbol')
-            if symbol and "^" not in symbol and "=" not in symbol:
-                discovered_stocks.append(symbol)
-    except:
-        pass
-
+    """ قائمة ذهبية منقحة ومثالية لأسهم الزخم والمضاربة تحت 10$ تفادياً لأخطاء السكرينر """
+    discovered_stocks = [
+        "SIRI", "SOUN", "BBAI", "PLTR", "LCID", "NIO", "MARA", "RIOT", "CLSK", "WULF", 
+        "HIVE", "BITF", "GOEV", "MULN", "XPEV", "LI", "FFIE", "LAZR", "WKHS", "PLUG", 
+        "FCEL", "RUN", "BLNK", "AMC", "GME", "BB", "TLRY", "SNDL", "CGC", "SOFI", 
+        "HOOD", "NU", "UPST", "AFRM", "OPEN", "DNA", "RNXT", "NUGT", "NKLA"
+    ]
     return list(set(discovered_stocks))
 
-logging.info("🚀 رادار رعد الأسطوري المطور (فحص على مدار الساعة) بدأ العمل بنجاح...")
+logging.info("🚀 رادار رعد الأسطوري (سرعة دقيقة واحدة + فحص آمن) انطلق...")
 
 while True:
     try:
@@ -100,13 +79,11 @@ while True:
         
         time_float = current_hour + (current_minute / 60.0)
         
-        # حماية عطلة نهاية الأسبوع فقط
         if current_day in ['Saturday', 'Sunday']:
             logging.info(f"السوق مغلق عطلة نهاية الأسبوع ({current_day})...")
             time.sleep(60)
             continue
             
-        # تحديد اسم الفترة بشكل توضيحي فقط دون تعطيل المسح
         market_phase = "السوق الرسمي 🟢"
         if time_float < 9.5:
             market_phase = "ما قبل السوق (Pre-Market) 🌅"
@@ -114,20 +91,19 @@ while True:
             market_phase = "ما بعد السوق (After-Hours) 🌙"
             
         active_stocks = get_active_market_stocks()
-        logging.info(f"🔄 [{market_phase}] جاري مسح السوق وفحص إشارة رعد لـ {len(active_stocks)} سهم حركي...")
+        logging.info(f"🔄 [{market_phase}] جاري مسح السوق الآن وفحص إشارة رعد لـ {len(active_stocks)} سهم...")
         
         for s in active_stocks:
             try:
                 ticker = yf.Ticker(s)
-                # سحب داتا حية شاملة لفترات ما قبل السوق
                 df = ticker.history(period="3d", interval="15m", include_prepost=True)
-                if df.empty or len(df) < 20: continue
+                if df.empty or len(df) < 15: 
+                    continue
                 
-                # قراءة السعر الحالي اللحظي بدقة
-                info = ticker.fast_info
-                last_price = info.get('lastPrice') if info.get('lastPrice') else df['Close'].iloc[-1]
+                # قراءة السعر الحالي بأمان من الداتا فريم لتجنب أخطاء JSON اللحظية
+                last_price = df['Close'].iloc[-1]
                 
-                # التصفية السعرية: أسهم تحت الـ 10 دولار
+                # تصفية سعرية دقيقة (تحت الـ 10 دولار)
                 if last_price is None or last_price >= 10.0 or last_price <= 0.1:
                     continue
                 
@@ -152,7 +128,7 @@ while True:
                 if pd.isna(res_val) or pd.isna(mfi_val) or pd.isna(atr_val): 
                     continue
                 
-                # تطبيق استراتيجية "دخول رعد" الفنية
+                # استراتيجية الدخول اللحظي المعتمدة على السعر الحالي للرادار
                 is_crossover = prev_price <= prev_ema9 and last_price > ema9_val
                 is_near_res = last_price > (res_val * 0.96)
                 is_high_mfi = mfi_val > 45
@@ -183,8 +159,9 @@ while True:
             except Exception as e:
                 continue
                 
+        logging.info("✨ انتهى الفحص الحالي بنجاح - انتظار 60 ثانية قبل الدورة القادمة...")
+        time.sleep(60)
+        
     except Exception as e:
         logging.error(f"خطأ في الدورة الرئيسية: {e}")
-        
-    # فحص سريع ومستمر كل دقيقة واحدة لمواكبة سرعة فترات التداول
-    time.sleep(60)
+        time.sleep(10)
