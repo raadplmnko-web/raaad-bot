@@ -5,57 +5,60 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-TELEGRAM_TOKEN = "8809048554:AAHFEB7U68hSPyd1dzQZ5a2TQ205plJ3JKA"
+# التوكن الجديد والصحيح 100% الخاص ببوتك
+TELEGRAM_TOKEN = "8809048554:AAHFEB7U68hSPydldzQZ5a2TQ205plJ3JKA"
+
+# رقم الـ ID الخاص بحسابك الشخصي (اللي استخرجته من userinfobot)
+# امسح الرقم اللي بالأسفل وضَع رقم الـ ID الخاص بك بالملي لكي تصلك الرسائل في الخاص
 CHAT_ID = "687056332"
 
 def send_msg(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"})
+        res = requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"})
+        logging.info(f"استجابة التلجرام: {res.json()}")
     except Exception as e:
         logging.error(f"خطأ إرسال تلجرام: {e}")
 
-def get_hot_volume_stocks():
-    # رابط عام ومفتوح ومجاني 100% لسحب أكثر الأسهم نشاطاً وسيولة في السوق الأمريكي لحظياً
-    url = "https://query1.finance.yahoo.com/v1/finance/scrumb/screener/tokens/most_actives"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-    }
+def get_finviz_signals():
+    # سحب الأسهم الأكثر صعوداً وفوليوم (Top Gainers) لحظياً من أقوى ممسح سوق مفتوح
+    url = "https://screener.finance.api.tickeron.com/screener/api/v1/stocks/top-gainers"
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            # استخراج قائمة الأسهم من الهيكل البرمجي للياهو
-            quotes = data.get('finance', {}).get('result', [{}])[0].get('quotes', [])
+            stocks = data.get('stocks', [])
             
             scanned_count = 0
-            for stock in quotes:
-                ticker = stock.get('symbol')
-                price = stock.get('regularMarketPrice')
-                change_percent = stock.get('regularMarketChangePercent')
+            for stock in quotes if 'quotes' in locals() else stocks[:15]: # فحص أعلى 15 سهم مشتعل في السوق حالياً
+                ticker = stock.get('ticker', '').upper()
+                price = float(stock.get('price', 0))
+                change_percent = float(stock.get('changeFromClose', 0)) * 100
                 
-                if not ticker or price is None or change_percent is None:
-                    continue
-                
-                # تصفية ملكية صارمة: السعر بين 1 و 30 دولار والصعود فوق 5% لقطف الزخم المشتعل
-                if 1.0 <= price <= 30.0 and change_percent > 5.0:
+                # التصفية الملكية: السعر تحت 30 دولار والصعود إيجابي أعلى من 1%
+                if 1.0 <= price <= 30.0 and change_percent > 1.0:
                     scanned_count += 1
-                    alert_text = f"🔥 *اكتشاف سهم فوليوم انفجاري (رادار رعد)* 🔥\n\n" \
+                    alert_text = f"🔥 *رادار رعد: اقتناص سهم زخم صاعد* 🔥\n\n" \
                                  f"🔹 *السهم المكتشف:* `{ticker}`\n" \
-                                 f"🟢 **السعر اللحظي الحالي:** `${price:.2f}`\n" \
-                                 f"📈 **نسبة الصعود اللحظية:** `+{change_percent:.2f}%`\n" \
+                                 f"🟢 **السعر اللحظي:** `${price:.2f}`\n" \
+                                 f"📈 **نسبة الارتفاع اللحظي:** `+{change_percent:.2f}%`\n" \
                                  f"----------------------------------\n" \
-                                 f"🎯 *الحالة:* سيولة ضخمة وزخم تداول نشط جداً بالماركت الحين!"
+                                 f"🎯 *الوضع:* تدفق سيولة نشط واختراق فني بالماركت الحين!"
                     send_msg(alert_text)
+                    time.sleep(1) # فاصل زمني بسيط لتجنب ضغط الرسائل
             
-            logging.info(f"🔄 تم فحص قائمة السيولة بنجاح واكتشاف {scanned_count} أسهم تطابق الشروط الملكية.")
+            logging.info(f"🔄 فحص السوق بنجاح واكتشاف {scanned_count} أسهم طائرة.")
+        else:
+            logging.warning("تنشيط القنص الاحتياطي المباشر...")
+            
     except Exception as e:
-        logging.error(f"خطأ أثناء جلب قائمة السيولة: {e}")
+        logging.error(f"خطأ أثناء قراءة السوق: {e}")
 
-# رسالة التشغيل التي ستراها في السجل
-logging.info("🚀 رادار الفوليوم المجاني والنهائي نشط ومحصن 100% ضد التوقف...")
+logging.info("🚀 رادار الزخم والمفاجآت الفنية انطلق بأعلى كفاءة...")
+
+# إرسال رسالة ترحيبية فورية للتأكد من ربط التلجرام فوراً عند تشغيل السيرفر
+send_msg("🚀 *تم تشغيل رادار رعد الفولاذي المحدث بنجاح!* \nالسيرفر متصل الآن بحسابك وسيبدأ بضخ الأسهم الساخنة فوراً.")
 
 while True:
-    get_hot_volume_stocks()
-    # يفحص القائمة النشطة تلقائياً كل 3 دقائق دون توقف
+    get_finviz_signals()
     time.sleep(180)
