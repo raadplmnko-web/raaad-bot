@@ -60,7 +60,7 @@ def calculate_atr(df, period=14):
         return pd.Series(0.1, index=df.index)
 
 def get_active_market_stocks():
-    """ جلب الأسهم الأكثر نشاطاً في السوق الأمريكي تحت 10$ وبفاليوم حي """
+    """ جلب الأسهم الأكثر نشاطاً في السوق الأمريكي تحت 10$ متوافقة مع فترة ما قبل السوق والسوق الرسمي """
     try:
         url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&screenerId=most_actives&count=100"
         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -71,10 +71,12 @@ def get_active_market_stocks():
         
         for q in quotes:
             symbol = q.get('symbol')
-            price = q.get('regularMarketPrice', 100)
+            # قراءة سعر السوق الحالي أو سعر ما قبل السوق إذا كان متاحاً
+            price = q.get('preMarketPrice') if q.get('preMarketPrice') else q.get('regularMarketPrice', 100)
+            # قراءة الحجم الإجمالي لضمان الفحص المبكر
             volume = q.get('regularMarketVolume', 0)
             
-            if symbol and price < 10.0 and volume > 500000:
+            if symbol and price < 10.0 and volume > 100000:  # تعديل الحجم إلى 100 ألف ليناسب بداية سيولة الصباح المبكر
                 if "^" not in symbol and "=" not in symbol:
                     discovered_stocks.append(symbol)
                     
@@ -83,7 +85,7 @@ def get_active_market_stocks():
         logging.error(f"خطأ في جلب قائمة السوق النشطة: {e}")
         return []
 
-logging.info("🚀 رادار رعد الأسطوري V24 يعمل بنمط (إشارة دخول رعد ⚡ فقط) على مدار الساعة...")
+logging.info("🚀 رادار رعد الأسطوري V24 المطور (ما قبل السوق + السوق الرسمي) بدأ العمل بنجاح...")
 
 while True:
     try:
@@ -95,24 +97,26 @@ while True:
         
         time_float = current_hour + (current_minute / 60.0)
         
+        # حماية عطلة نهاية الأسبوع
+        if current_day in ['Saturday', 'Sunday']:
+            logging.info(f"السوق مغلق عطلة نهاية الأسبوع ({current_day})...")
+            time.sleep(300)
+            continue
+            
         market_phase = "السوق الرسمي 🟢"
         if time_float < 9.5:
             market_phase = "ما قبل السوق (Pre-Market) 🌅"
         elif time_float > 16.0:
             market_phase = "ما بعد السوق (After-Hours) 🌙"
             
-        if current_day in ['Saturday', 'Sunday']:
-            logging.info(f"السوق مغلق عطلة نهاية الأسبوع ({current_day})...")
-            time.sleep(300)
-            continue
-            
         active_stocks = get_active_market_stocks()
-        logging.info(f"🔄 جاري مسح السوق وفحص إشارة (دخول رعد ⚡) لـ {len(active_stocks)} سهم...")
+        logging.info(f"🔄 [{market_phase}] جاري مسح السوق وفحص إشارة (دخول رعد ⚡) لـ {len(active_stocks)} سهم...")
         
         for s in active_stocks:
             try:
                 ticker = yf.Ticker(s)
-                df = ticker.history(period="5d", interval="1h", include_prepost=True)
+                # استخدام داتا الـ 5 أيام بفاصل 15 دقيقة لدقة واقتناص عالي في ما قبل السوق
+                df = ticker.history(period="5d", interval="15m", include_prepost=True)
                 if df.empty or len(df) < 32: continue
                 
                 df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
@@ -146,7 +150,6 @@ while True:
                     target1 = last_price + (atr_val * 1.2)
                     target_gold = last_price + (atr_val * 3.0)
                     
-                    # حماية دالة الـ round من القيم الفارغة المفاجئة
                     mfi_display = int(mfi_val) if not pd.isna(mfi_val) else 50
                     
                     alert_text = (
@@ -155,12 +158,12 @@ while True:
                         f"⏰ *الفترة:* {market_phase}\n"
                         f"📊 *السيولة MFI:* `{mfi_display}%`\n"
                         f"----------------------------------\n"
-                        f"🟢 **سعر الدخول:** `${last_price:.2f}`\n"
+                        f"🟢 **سعر الدخول الحاضر:** `${last_price:.2f}`\n"
                         f"🛑 **وقف الخسارة:** `${stop_loss:.2f}`\n"
                         f"🎯 **الهدف الأول:** `${target1:.2f}`\n"
                         f"🏆 **الهدف الذهبي:** `${target_gold:.2f}`\n"
                         f"----------------------------------\n"
-                        f"📈 *الرادار:* مستوفي الشروط، ومطابق للشاشة تماماً!"
+                        f"📈 *الرادار:* مستوفي الشروط، وجاهز للاقتناص الفوري!"
                     )
                     send_msg(alert_text)
                     logging.info(f"✅ تم قنص وإرسال إشارة دخول رعد للسهم: {s}")
@@ -171,4 +174,5 @@ while True:
     except Exception as e:
         logging.error(f"خطأ في الدورة الرئيسية: {e}")
         
-    time.sleep(300)
+    # فحص سريع كل 60 ثانية لمواكبة سرعة الـ Pre-market والتنفيذ اللحظي
+    time.sleep(60)
