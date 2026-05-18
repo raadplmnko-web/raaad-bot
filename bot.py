@@ -109,7 +109,7 @@ def get_active_market_stocks():
     ]
     return list(set(clean_stocks))
 
-logging.info("🚀 رادار رعد الأسطوري V26 (تم إصلاح خطأ السنتاكس وجاهز للانطلاق الحقيقي)...")
+logging.info("🚀 رادار رعد الأسطوري V26 (إصلاح شامل ونهائي لطريقة صياغة النصوص)...")
 
 while True:
     try:
@@ -219,7 +219,32 @@ while True:
                     target2 = last_price + (atr_val * 2.0)
                     target_gold = last_price + (atr_val * 3.2)
                     
-                    # تم قفل وإصلاح علامات التنصيص المفتوحة بدقة هنا بالأسفل لإنهاء الـ SyntaxError
-                    alert_text = (
-                        f"{alert_emoji} *إشارة: {signal_type}* {alert_emoji}\n\n"
-                        f"🔹 *السهم المكتشف:* `{s
+                    # صياغة السطر الواحد المدمج لإنهاء مشاكل التنصيص نهائياً
+                    alert_text = f"{alert_emoji} *إشارة: {signal_type}* {alert_emoji}\n\n" \
+                                 f"🔹 *السهم المكتشف:* `{s}`\n" \
+                                 f"⏰ *توقيت ومرحلة السوق:* {market_phase}\n" \
+                                 f"📊 *سرعة صعود السعر ROC:* `{roc_val:.1f}%`\n" \
+                                 f"🌊 *سيولة التدفق MFI:* `{mfi_val:.0f}%`\n" \
+                                 f"🎯 *قوة مؤشر الـ RSI:* `{rsi_val:.0f}`\n" \
+                                 f"💪 *قوة الترند ADX:* `{adx_val:.0f}`\n" \
+                                 f"----------------------------------\n" \
+                                 f"🟢 **سعر الدخول الفوري:** `${last_price:.2f}`\n" \
+                                 f"🛑 **وقف الخسارة الجسداني:** `${stop_loss:.2f}`\n" \
+                                 f"🎯 **الهدف السريع الأول:** `${target1:.2f}`\n" \
+                                 f"🎯 **الهدف الإستراتيجي الثاني:** `${target2:.2f}`\n" \
+                                 f"🏆 **الهدف الذهبي البعيد:** `${target_gold:.2f}`\n" \
+                                 f"----------------------------------\n" \
+                                 f"📈 *رادار رعد V26:* فحص نشط ومؤمن بالكامل!"
+                                 
+                    send_msg(alert_text)
+                    logging.info(f"✅ [تم الإرسال] قنص إشارة {signal_type} للسهم: {s}")
+                    
+            except Exception as e:
+                continue
+                
+        logging.info(f"🔄 [{market_phase}] بنجاح فحص وتحليل {scanned_count} سهم نشط حالياً...")
+        time.sleep(60)
+        
+    except Exception as e:
+        logging.error(f"خطأ في الدورة الرئيسية: {e}")
+        time.sleep(10)
