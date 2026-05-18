@@ -24,7 +24,6 @@ def send_msg(text):
         logging.error(f"خطأ في إرسال رسالة التلجرام: {e}")
 
 def calculate_mfi(df, period=7):
-    """ حساب مؤشر تدفق الأموال MFI بحماية ضد القيم الفارغة """
     try:
         typical_price = (df['High'] + df['Low'] + df['Close']) / 3
         money_flow = typical_price * df['Volume']
@@ -47,7 +46,6 @@ def calculate_mfi(df, period=7):
         return pd.Series(50.0, index=df.index)
 
 def calculate_atr(df, period=14):
-    """ حساب مؤشر ATR الموزون (RMA) كما في TradingView """
     try:
         high_low = df['High'] - df['Low']
         high_cp = (df['High'] - df['Close'].shift(1)).abs()
@@ -60,32 +58,36 @@ def calculate_atr(df, period=14):
         return pd.Series(0.1, index=df.index)
 
 def get_active_market_stocks():
-    """ جلب الأسهم الأكثر نشاطاً في السوق الأمريكي تحت 10$ متوافقة مع فترة ما قبل السوق والسوق الرسمي """
+    """ جلب ذكي وحي للأسهم الأكثر نشاطاً وديناميكية لتغطية ما قبل السوق بدقة """
+    discovered_stocks = []
+    # الفرز الأول: الأكثر نشاطاً بحجم التداول
     try:
-        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&screenerId=most_actives&count=100"
+        url_actives = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&screenerId=most_actives&count=40"
         headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers).json()
-        
-        discovered_stocks = []
-        quotes = response.get('finance', {}).get('result', [{}])[0].get('quotes', [])
-        
+        res = requests.get(url_actives, headers=headers).json()
+        quotes = res.get('finance', {}).get('result', [{}])[0].get('quotes', [])
         for q in quotes:
             symbol = q.get('symbol')
-            # قراءة سعر السوق الحالي أو سعر ما قبل السوق إذا كان متاحاً
-            price = q.get('preMarketPrice') if q.get('preMarketPrice') else q.get('regularMarketPrice', 100)
-            # قراءة الحجم الإجمالي لضمان الفحص المبكر
-            volume = q.get('regularMarketVolume', 0)
-            
-            if symbol and price < 10.0 and volume > 100000:  # تعديل الحجم إلى 100 ألف ليناسب بداية سيولة الصباح المبكر
-                if "^" not in symbol and "=" not in symbol:
-                    discovered_stocks.append(symbol)
-                    
-        return list(set(discovered_stocks))
-    except Exception as e:
-        logging.error(f"خطأ في جلب قائمة السوق النشطة: {e}")
-        return []
+            if symbol and "^" not in symbol and "=" not in symbol:
+                discovered_stocks.append(symbol)
+    except:
+        pass
 
-logging.info("🚀 رادار رعد الأسطوري V24 المطور (ما قبل السوق + السوق الرسمي) بدأ العمل بنجاح...")
+    # الفرز الثاني: الأسهم الأكثر صعوداً (Gainers) لاقتناص انفجارات الفجر الصباحية
+    try:
+        url_gainers = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&screenerId=day_gainers&count=40"
+        res = requests.get(url_gainers, headers={'User-Agent': 'Mozilla/5.0'}).json()
+        quotes = res.get('finance', {}).get('result', [{}])[0].get('quotes', [])
+        for q in quotes:
+            symbol = q.get('symbol')
+            if symbol and "^" not in symbol and "=" not in symbol:
+                discovered_stocks.append(symbol)
+    except:
+        pass
+
+    return list(set(discovered_stocks))
+
+logging.info("🚀 رادار رعد الاحترافي V25 انطلق لمسح الـ Pre-Market والسوق الرسمي بالثانية...")
 
 while True:
     try:
@@ -97,10 +99,9 @@ while True:
         
         time_float = current_hour + (current_minute / 60.0)
         
-        # حماية عطلة نهاية الأسبوع
         if current_day in ['Saturday', 'Sunday']:
             logging.info(f"السوق مغلق عطلة نهاية الأسبوع ({current_day})...")
-            time.sleep(300)
+            time.sleep(60)
             continue
             
         market_phase = "السوق الرسمي 🟢"
@@ -110,14 +111,22 @@ while True:
             market_phase = "ما بعد السوق (After-Hours) 🌙"
             
         active_stocks = get_active_market_stocks()
-        logging.info(f"🔄 [{market_phase}] جاري مسح السوق وفحص إشارة (دخول رعد ⚡) لـ {len(active_stocks)} سهم...")
+        logging.info(f"🔄 [{market_phase}] جاري مسح السوق الآن وفحص إشارة رعد لـ {len(active_stocks)} سهم...")
         
         for s in active_stocks:
             try:
                 ticker = yf.Ticker(s)
-                # استخدام داتا الـ 5 أيام بفاصل 15 دقيقة لدقة واقتناص عالي في ما قبل السوق
-                df = ticker.history(period="5d", interval="15m", include_prepost=True)
-                if df.empty or len(df) < 32: continue
+                # سحب بيانات الـ 15 دقيقة الشاملة للـ Pre-market بالكامل
+                df = ticker.history(period="3d", interval="15m", include_prepost=True)
+                if df.empty or len(df) < 15: continue
+                
+                # جلب السعر الحالي الحقيقي سواء في البري ماركت أو السوق الرسمي
+                info = ticker.fast_info
+                last_price = info.get('lastPrice') if info.get('lastPrice') else df['Close'].iloc[-1]
+                
+                # شروط الفرز الأساسية لـ "رعد": أسهم تحت الـ 10 دولار
+                if last_price is None or last_price >= 10.0 or last_price <= 0.2:
+                    continue
                 
                 df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
                 df['MFI7'] = calculate_mfi(df, period=7)
@@ -127,7 +136,6 @@ while True:
                 df['Sup30'] = df['Low'].shift(1).rolling(window=30).min()
                 df['Low10'] = df['Low'].rolling(window=10).min()
                 
-                last_price = df['Close'].iloc[-1]
                 ema9_val = df['EMA9'].iloc[-1]
                 mfi_val = df['MFI7'].iloc[-1]
                 res_val = df['Res30'].iloc[-1]
@@ -138,19 +146,20 @@ while True:
                 prev_price = df['Close'].iloc[-2]
                 prev_ema9 = df['EMA9'].iloc[-2]
                 
-                if pd.isna(res_val) or pd.isna(mfi_val) or pd.isna(atr_val) or pd.isna(last_price): 
+                if pd.isna(res_val) or pd.isna(mfi_val) or pd.isna(atr_val): 
                     continue
                 
+                # الفحص الفني الذكي لاختراق المتوسط والسيولة
                 is_crossover = prev_price <= prev_ema9 and last_price > ema9_val
-                is_near_res = last_price > (res_val * 0.98)
-                is_high_mfi = mfi_val > 50
+                is_near_res = last_price > (res_val * 0.95) # توسيع النطاق قليلاً في البري ماركت لاقتناص الفوليوم المفاجئ
+                is_high_mfi = mfi_val > 45
                 
-                if last_price < 10.0 and is_crossover and is_near_res and is_high_mfi:
+                if is_crossover and is_near_res and is_high_mfi:
                     stop_loss = min(sup_val, low10_val) - (atr_val * 0.5)
                     target1 = last_price + (atr_val * 1.2)
                     target_gold = last_price + (atr_val * 3.0)
                     
-                    mfi_display = int(mfi_val) if not pd.isna(mfi_val) else 50
+                    mfi_display = int(mfi_val)
                     
                     alert_text = (
                         f"⚡ *إشارة: دخول رعد ⚡*\n\n"
@@ -163,7 +172,7 @@ while True:
                         f"🎯 **الهدف الأول:** `${target1:.2f}`\n"
                         f"🏆 **الهدف الذهبي:** `${target_gold:.2f}`\n"
                         f"----------------------------------\n"
-                        f"📈 *الرادار:* مستوفي الشروط، وجاهز للاقتناص الفوري!"
+                        f"📈 *الرادار:* مستوفي الشروط، ومطابق للشاشة تماماً!"
                     )
                     send_msg(alert_text)
                     logging.info(f"✅ تم قنص وإرسال إشارة دخول رعد للسهم: {s}")
@@ -174,5 +183,5 @@ while True:
     except Exception as e:
         logging.error(f"خطأ في الدورة الرئيسية: {e}")
         
-    # فحص سريع كل 60 ثانية لمواكبة سرعة الـ Pre-market والتنفيذ اللحظي
+    # التحديث السريع والنشط كل دقيقة
     time.sleep(60)
