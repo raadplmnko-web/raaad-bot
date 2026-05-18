@@ -96,24 +96,23 @@ def calculate_adx(df, period=7):
         return pd.Series(20.0, index=df.index)
 
 def get_active_market_stocks():
-    """ باقة الـ 70 سهم الكاملة والمنقحة من أي تكرار أو رموز معطلة """
+    """ باقة الأسهم المنقحة والمطهرة تماماً من الرموز المعطلة كـ BTCM """
     clean_stocks = [
         "SIRI", "SOUN", "BBAI", "PLTR", "LCID", "NIO", "MARA", "RIOT", "CLSK", "WULF", 
         "HIVE", "BITF", "GOEV", "MULN", "XPEV", "LI", "FFIE", "LAZR", "WKHS", "PLUG", 
         "FCEL", "RUN", "BLNK", "AMC", "GME", "BB", "TLRY", "SNDL", "CGC", "SOFI", 
         "HOOD", "NU", "UPST", "AFRM", "OPEN", "DNA", "RNXT", "NUGT", "NKLA",
         "RUM", "CRDO", "PATH", "AI", "VERI", "CXAI", "SAVE", "JBLU", "CIFR", "ANY", 
-        "BTCM", "SDG", "CAN", "IREN", "GNE", "AMPS", "BE", "CHPT", "EVGO", "SOLO", 
+        "SDG", "CAN", "IREN", "GNE", "AMPS", "BE", "CHPT", "EVGO", "SOLO", 
         "NVAX", "OCGN", "TNXP", "GNS", "XELA", "COSM", "CEI", "IMPP", "HUSA", "INDO", 
         "SNAP", "PTON", "GRWG", "ACB", "OGI", "FUBO", "RIG", "VALE", "AAL"
     ]
     return list(set(clean_stocks))
 
-logging.info("🚀 رادار رعد الأسطوري V26 (إصلاح شامل لمزامنة الوقت وحماية المسح) انطلق الحين...")
+logging.info("🚀 رادار رعد الأسطوري V26 (إصلاح شامل لجلب أسعار البني ستوكس في البري ماركت)...")
 
 while True:
     try:
-        # ضبط المنطقة الزمنية بدقة على نيويورك (توقيت السوق الأمريكي)
         tz_ny = pytz.timezone('America/New_York')
         current_time_ny = datetime.now(tz_ny)
         current_day = current_time_ny.strftime('%A')
@@ -122,7 +121,6 @@ while True:
         
         time_float = current_hour + (current_minute / 60.0)
         
-        # حماية أيام الإجازات الرسمية للسوق
         if current_day in ['Saturday', 'Sunday']:
             logging.info(f"💤 السوق مغلق حالياً عطلة نهاية الأسبوع ({current_day})...")
             time.sleep(60)
@@ -135,25 +133,30 @@ while True:
             market_phase = "ما بعد السوق (After-Hours) 🌙"
             
         active_stocks = get_active_market_stocks()
-        scanned_count = 0  # عداد حقيقي للتأكد من فحص الأسهم
+        scanned_count = 0  
         
         for s in active_stocks:
             try:
                 ticker = yf.Ticker(s)
-                # جلب البيانات الرقمية بمدى آمن وسريع (3 أيام) لضمان عدم حدوث Timeout
                 df = ticker.history(period="3d", interval="15m", include_prepost=True)
                 
-                if df.empty or len(df) < 15: 
+                if df.empty or len(df) < 10: 
                     continue
                 
+                # تأمين قراءة السعر الأخير في شاشات الـ Pre-Market لتجنب الـ NaN
                 last_price = df['Close'].iloc[-1]
+                if pd.isna(last_price) or last_price is None:
+                    last_price = df['Open'].iloc[-1] # تراجع ذكي في حال لم تنفذ شمعة إغلاق
+                    
                 prev_price = df['Close'].iloc[-2]
+                if pd.isna(prev_price) or prev_price is None:
+                    prev_price = df['Open'].iloc[-2]
                 
-                # شرط السقف السعري الصارم: 10 دولار وتحت فقط!
-                if last_price is None or last_price >= 10.0 or last_price <= 0.1:
+                # التحقق النهائي الآمن من الأسعار ومطابقتها لشرط 10$ وتحت
+                if pd.isna(last_price) or last_price >= 10.0 or last_price <= 0.1:
                     continue
                 
-                # بمجرد تجاوز الشروط، نضيف السهم للأسهم المفحوصة بنجاح
+                # إضافة السهم للعداد بنجاح بعد تجاوز فحص السعر
                 scanned_count += 1
                 
                 # حساب الأساسيات الفنية V26 للرادار
@@ -186,35 +189,35 @@ while True:
                 
                 avg_vol = df['Volume'].rolling(window=20).mean().iloc[-1]
                 current_vol = df['Volume'].iloc[-1]
-                is_high_vol = current_vol > (avg_vol * 2.0)
-                is_mega_vol = current_vol > (avg_vol * 3.5)
+                is_high_vol = current_vol > (avg_vol * 1.5)
+                is_mega_vol = current_vol > (avg_vol * 2.8)
                 
-                is_roc_strong = roc_val > 2.0
-                trend_strong  = adx_val > 25
-                trend_weak    = adx_val < 20
+                is_roc_strong = roc_val > 1.5
+                trend_strong  = adx_val > 22
+                trend_weak    = adx_val < 18
                 is_breakout   = (prev_price <= res_val and last_price > res_val) and is_high_vol
                 
                 signal_type = ""
                 alert_emoji = ""
                 
-                if is_mega_vol and is_roc_strong and last_price > res_val and mfi_val > 60 and trend_strong:
+                if is_mega_vol and is_roc_strong and last_price > res_val and mfi_val > 55 and trend_strong:
                     signal_type = "انفجار زخم 💥"
                     alert_emoji = "💥💥"
-                elif (prev_price <= prev_ema9 and last_price > ema9_val) and last_price > (res_val * 0.98) and mfi_val > 50 and trend_strong and is_roc_strong:
+                elif (prev_price <= prev_ema9 and last_price > ema9_val) and last_price > (res_val * 0.97) and mfi_val > 45 and trend_strong:
                     signal_type = "دخول رعد ⚡"
                     alert_emoji = "⚡⚡"
-                elif (is_breakout or (is_mega_vol and df['Close'].iloc[-1] > df['Open'].iloc[-1])) and mfi_val > 45 and not trend_weak and is_roc_strong:
+                elif (is_breakout or (is_mega_vol and df['Close'].iloc[-1] > df['Open'].iloc[-1])) and mfi_val > 40 and not trend_weak:
                     signal_type = "مغامرة زخم 🔥"
                     alert_emoji = "🔥🔥"
-                elif df['Low'].iloc[-1] <= (sup_val * 1.01) and (min(df['Open'].iloc[-1], last_price) - df['Low'].iloc[-1]) > abs(last_price - df['Open'].iloc[-1]) * 0.6 and rsi_val < 45:
+                elif df['Low'].iloc[-1] <= (sup_val * 1.01) and rsi_val < 40:
                     signal_type = "ارتداد قاع ⚓"
                     alert_emoji = "⚓⚓"
 
                 if signal_type != "":
-                    stop_loss = min(sup_val, low10_val) - (atr_val * 0.3)
+                    stop_loss = min(sup_val, low10_val) - (atr_val * 0.2)
                     target1 = last_price + (atr_val * 1.0)
                     target2 = last_price + (atr_val * 2.0)
-                    target_gold = last_price + (atr_val * 3.5)
+                    target_gold = last_price + (atr_val * 3.2)
                     
                     alert_text = (
                         f"{alert_emoji} *إشارة: {signal_type}* {alert_emoji}\n\n"
@@ -231,16 +234,15 @@ while True:
                         f"🎯 **الهدف الإستراتيجي الثاني:** `${target2:.2f}`\n"
                         f"🏆 **الهدف الذهبي البعيد:** `${target_gold:.2f}`\n"
                         f"----------------------------------\n"
-                        f"📈 *رادار رعد V26:* فحص نشط لأسهم تحت 10$!"
+                        f"📈 *رادار رعد V26:* فحص نشط ومؤمن لأسهم تحت 10$!"
                     )
                     send_msg(alert_text)
                     logging.info(f"✅ [تم الإرسال] قنص إشارة {signal_type} للسهم: {s}")
                     
             except Exception as e:
-                # لو فشل سهم واحد، السيرفر يكمل الباقي ولا يتوقف أبداً
                 continue
                 
-        logging.info(f"🔄 [{market_phase}] تم بنجاح فحص وتحليل {scanned_count} سهم نشط حالياً...")
+        logging.info(f"🔄 [{market_phase}] بنجاح فحص وتحليل {scanned_count} سهم نشط حالياً...")
         time.sleep(60)
         
     except Exception as e:
