@@ -68,7 +68,6 @@ def calculate_rsi(df, period=14):
         return pd.Series(50.0, index=df.index)
 
 def calculate_adx(df, period=7):
-    """ حساب مؤشر ADX والـ DMI لفترة مقلصة للزخم السريع """
     try:
         plus_dm = df['High'].diff()
         minus_dm = df['Low'].diff()
@@ -97,15 +96,22 @@ def calculate_adx(df, period=7):
         return pd.Series(20.0, index=df.index)
 
 def get_active_market_stocks():
-    """ القائمة الذهبية المنقحة المكونة من 39 سهم مضاربي """
-    return [
+    """ قائمة ذهبية موسعة لأسهم المضاربة والحجم الملاييني العالي """
+    discovered_stocks = [
         "SIRI", "SOUN", "BBAI", "PLTR", "LCID", "NIO", "MARA", "RIOT", "CLSK", "WULF", 
         "HIVE", "BITF", "GOEV", "MULN", "XPEV", "LI", "FFIE", "LAZR", "WKHS", "PLUG", 
         "FCEL", "RUN", "BLNK", "AMC", "GME", "BB", "TLRY", "SNDL", "CGC", "SOFI", 
-        "HOOD", "NU", "UPST", "AFRM", "OPEN", "DNA", "RNXT", "NUGT", "NKLA"
+        "HOOD", "NU", "UPST", "AFRM", "OPEN", "DNA", "RNXT", "NUGT", "NKLA",
+        "RUM", "CRDO", "PATH", "AI", "VERI", "CXAI", "SAVE", "JBLU", "CIFR", "ANY", 
+        "BTCM", "SDG", "CAN", "IREN", "GNE", "AMPS", "BE", "CHPT", "EVGO", "SOLO", 
+        "FSR", "NVAX", "BNTX", "MRNA", "OCGN", "TNXP", "GNS", "HLBZ", "XELA", "COSM",
+        "TRKA", "APR", "TYDE", "BBBY", "GMVD", "CEI", "IMPP", "HUSA", "INDO", "SNAP", 
+        "PTON", "GRWG", "ACB", "OGI", "GRPN", "KOSS", "EXPR", "FUBO", "RIG", "VALE"
     ]
+    # تنظيف القائمة من التكرار لضمان الكفاءة
+    return list(set(discovered_stocks))
 
-logging.info("🚀 رادار رعد الأسطوري (الإصدار الاحترافي V26) بدأ الفحص التكاملي الحجمي...")
+logging.info("🚀 رادار رعد الأسطوري (الإصدار الاحترافي V26 - تصفية 10$ وتحت) بدأ العمل...")
 
 while True:
     try:
@@ -141,8 +147,8 @@ while True:
                 last_price = df['Close'].iloc[-1]
                 prev_price = df['Close'].iloc[-2]
                 
-                # تصفية الأسهم السعرية
-                if last_price is None or last_price >= 30.0 or last_price <= 0.1:
+                # 🛑 التصفية الصارمة: 10 دولار وتحت فقط بناء على طلبك!
+                if last_price is None or last_price >= 10.0 or last_price <= 0.1:
                     continue
                 
                 # حساب الأساسيات الفنية V26
@@ -208,4 +214,43 @@ while True:
                     alert_emoji = "🔥🔥"
                 # ⚓ 4. ارتداد سفلي من القاع
                 elif df['Low'].iloc[-1] <= (sup_val * 1.01) and (min(df['Open'].iloc[-1], last_price) - df['Low'].iloc[-1]) > abs(last_price - df['Open'].iloc[-1]) * 0.6 and rsi_val < 45:
-                    signal_type = "ارت
+                    signal_type = "ارتداد قاع ⚓"
+                    alert_emoji = "⚓⚓"
+
+                # حساب الأهداف وإدارة المخاطر الصارمة V26
+                if signal_type != "":
+                    stop_loss = min(sup_val, low10_val) - (atr_val * 0.3)
+                    target1 = last_price + (atr_val * 1.0)
+                    target2 = last_price + (atr_val * 2.0)
+                    target_gold = last_price + (atr_val * 3.5)
+                    
+                    # صياغة رسالة تلجرام البصرية الاحترافية والمطابقة تماماً للشارت
+                    alert_text = (
+                        f"{alert_emoji} *إشارة: {signal_type}* {alert_emoji}\n\n"
+                        f"🔹 *السهم المكتشف:* `{s}`\n"
+                        f"⏰ *توقيت ومرحلة السوق:* {market_phase}\n"
+                        f"📊 *سرعة صعود السعر ROC:* `{roc_val:.1f}%`\n"
+                        f"🌊 *سيولة التدفق MFI:* `{mfi_val:.0f}%`\n"
+                        f"🎯 *قوة مؤشر الـ RSI:* `{rsi_val:.0f}`\n"
+                        f"💪 *قوة الترند ADX:* `{adx_val:.0f}`\n"
+                        f"----------------------------------\n"
+                        f"🟢 **سعر الدخول الفوري:** `${last_price:.2f}`\n"
+                        f"🛑 **وقف الخسارة الجسداني:** `${stop_loss:.2f}`\n"
+                        f"🎯 **الهدف السريع الأول:** `${target1:.2f}`\n"
+                        f"🎯 **الهدف الإستراتيجي الثاني:** `${target2:.2f}`\n"
+                        f"🏆 **الهدف الذهبي البعيد:** `${target_gold:.2f}`\n"
+                        f"----------------------------------\n"
+                        f"📈 *رادار رعد V26:* مستند على فحص فني لأسهم تحت 10$ فقط!"
+                    )
+                    send_msg(alert_text)
+                    logging.info(f"✅ [تم الإرسال للتلجرام] قنص إشارة {signal_type} بنجاح للسهم: {s}")
+                    
+            except Exception as e:
+                continue
+                
+        logging.info("✨ انتهى فحص رادار V26 الحالي بنجاح - انتظار 60 ثانية قبل الدورة القادمة...")
+        time.sleep(60)
+        
+    except Exception as e:
+        logging.error(f"خطأ في الدورة الرئيسية للسيرفر: {e}")
+        time.sleep(10)
