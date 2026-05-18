@@ -8,10 +8,10 @@ from datetime import datetime
 import pytz
 import yfinance as yf
 
-# إعدادات الـ Logging لمراقبة عمل السيرفر والعمليات
+# إعدادات الـ Logging لمراقبة السيرفر
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# بيانات التلجرام المعتمدة والنشطة لك
+# بيانات التلجرام المعتمدة والنشطة
 TELEGRAM_TOKEN = "8809048554:AAHFEB7U68hSPyd1dzQZ5a2TQ205plJ3JKA"
 CHAT_ID = "687056332"
 
@@ -24,7 +24,7 @@ def send_msg(text):
         logging.error(f"خطأ في إرسال رسالة التلجرام: {e}")
 
 # ============================================================
-# حسابات مؤشرات رادار رعد الفنية الفائقة المترجمة من Pine Script
+# حسابات مؤشرات رادار رعد الفنية الفائقة
 # ============================================================
 
 def calculate_mfi(df, period=7):
@@ -96,20 +96,19 @@ def calculate_adx(df, period=7):
         return pd.Series(20.0, index=df.index)
 
 def get_active_market_stocks():
-    """ باقة الأسهم المنقحة والمطهرة تماماً من الرموز الموقوفة مثل SAVE و BTCM """
+    """ باقة أسهم الزخم النقية والنشطة """
     clean_stocks = [
-        "SIRI", "SOUN", "BBAI", "PLTR", "LCID", "NIO", "MARA", "RIOT", "CLSK", "WULF", 
-        "HIVE", "BITF", "GOEV", "MULN", "XPEV", "LI", "FFIE", "LAZR", "WKHS", "PLUG", 
-        "FCEL", "RUN", "BLNK", "AMC", "GME", "BB", "TLRY", "SNDL", "CGC", "SOFI", 
-        "HOOD", "NU", "UPST", "AFRM", "OPEN", "DNA", "RNXT", "NUGT", "NKLA",
-        "RUM", "CRDO", "PATH", "AI", "VERI", "CXAI", "JBLU", "CIFR", "ANY", 
-        "SDG", "CAN", "IREN", "GNE", "AMPS", "BE", "CHPT", "EVGO", "SOLO", 
-        "NVAX", "OCGN", "TNXP", "GNS", "XELA", "COSM", "CEI", "IMPP", "HUSA", "INDO", 
-        "SNAP", "PTON", "GRWG", "ACB", "OGI", "FUBO", "RIG", "VALE", "AAL"
+        "SIRI", "SOUN", "BBAI", "LCID", "NIO", "MARA", "RIOT", "CLSK", "WULF", 
+        "HIVE", "BITF", "FFIE", "LAZR", "WKHS", "PLUG", "FCEL", "RUN", 
+        "BLNK", "AMC", "GME", "BB", "TLRY", "SNDL", "CGC", "SOFI", "OPEN", 
+        "DNA", "RNXT", "NKLA", "RUM", "CRDO", "VERI", "CXAI", "JBLU", "CIFR", 
+        "ANY", "SDG", "CAN", "IREN", "GNE", "CHPT", "EVGO", "SOLO", "NVAX", 
+        "OCGN", "TNXP", "GNS", "XELA", "COSM", "CEI", "IMPP", "HUSA", "INDO", 
+        "PTON", "GRWG", "ACB", "OGI", "FUBO", "RIG"
     ]
     return list(set(clean_stocks))
 
-logging.info("🚀 رادار رعد الأسطوري V26 (إصلاح شامل ونهائي لطريقة صياغة النصوص)...")
+logging.info("🚀 رادار رعد الملكي المستقر V26 (تم تضييق النطاق السعري من 1$ إلى 10$)...")
 
 while True:
     try:
@@ -137,29 +136,21 @@ while True:
         
         for s in active_stocks:
             try:
-                ticker = yf.Ticker(s)
-                df = ticker.history(period="3d", interval="15m", include_prepost=True)
+                df = yf.download(s, period="3d", interval="15m", prepost=True, progress=False, group_by='ticker')
                 
                 if df.empty or len(df) < 10: 
                     continue
                 
-                # جلب السعر الأخير بأمان لضمان قراءة البري ماركت والافتتاح
-                last_price = df['Close'].iloc[-1]
-                if pd.isna(last_price) or last_price is None:
-                    last_price = df['Open'].iloc[-1]
-                    
-                prev_price = df['Close'].iloc[-2]
-                if pd.isna(prev_price) or prev_price is None:
-                    prev_price = df['Open'].iloc[-2]
+                last_price = float(df['Close'].iloc[-1])
+                prev_price = float(df['Close'].iloc[-2])
                 
-                # شرط السقف السعري (10 دولار وتحت)
-                if pd.isna(last_price) or last_price >= 10.0 or last_price <= 0.1:
+                # الشرط الصارم الجديد: بين 1 دولار و 10 دولار فقط
+                if pd.isna(last_price) or last_price < 1.0 or last_price > 10.0:
                     continue
                 
-                # زيادة العداد فور تخطي الفحوصات الأساسية بنجاح
                 scanned_count += 1
                 
-                # حساب الأساسيات الفنية V26 للرادار
+                # الحسابات الفنية المتقدمة
                 df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
                 df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
                 df['MFI7'] = calculate_mfi(df, period=7)
@@ -172,17 +163,17 @@ while True:
                 df['Sup15'] = df['Low'].shift(1).rolling(window=15).min()
                 df['Low10'] = df['Low'].rolling(window=10).min()
                 
-                ema9_val  = df['EMA9'].iloc[-1]
-                mfi_val   = df['MFI7'].iloc[-1]
-                atr_val   = df['ATR14'].iloc[-1]
-                rsi_val   = df['RSI14'].iloc[-1]
-                adx_val   = df['ADX7'].iloc[-1]
-                roc_val   = df['ROC10'].iloc[-1]
-                res_val   = df['Res15'].iloc[-1]
-                sup_val   = df['Sup15'].iloc[-1]
-                low10_val = df['Low10'].iloc[-1]
+                ema9_val  = float(df['EMA9'].iloc[-1])
+                mfi_val   = float(df['MFI7'].iloc[-1])
+                atr_val   = float(df['ATR14'].iloc[-1])
+                rsi_val   = float(df['RSI14'].iloc[-1])
+                adx_val   = float(df['ADX7'].iloc[-1])
+                roc_val   = float(df['ROC10'].iloc[-1])
+                res_val   = float(df['Res15'].iloc[-1])
+                sup_val   = float(df['Sup15'].iloc[-1])
+                low10_val = float(df['Low10'].iloc[-1])
                 
-                prev_ema9 = df['EMA9'].iloc[-2]
+                prev_ema9 = float(df['EMA9'].iloc[-2])
                 
                 if pd.isna(res_val) or pd.isna(mfi_val) or pd.isna(atr_val) or pd.isna(roc_val): 
                     continue
@@ -219,7 +210,6 @@ while True:
                     target2 = last_price + (atr_val * 2.0)
                     target_gold = last_price + (atr_val * 3.2)
                     
-                    # صياغة السطر الواحد المدمج لإنهاء مشاكل التنصيص نهائياً
                     alert_text = f"{alert_emoji} *إشارة: {signal_type}* {alert_emoji}\n\n" \
                                  f"🔹 *السهم المكتشف:* `{s}`\n" \
                                  f"⏰ *توقيت ومرحلة السوق:* {market_phase}\n" \
