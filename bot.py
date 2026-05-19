@@ -26,30 +26,43 @@ def send_msg(text):
     except Exception as e:
         logging.error(f"خطأ تلجرام: {e}")
 
-def get_us_stocks():
-    url = "https://finnhub.io/api/v1/stock/symbol"
-    params = {"exchange": "US", "token": FINNHUB_KEY}
-    try:
-        res = requests.get(url, params=params, timeout=15)
-        symbols = [s['symbol'] for s in res.json() if s.get('type') == 'Common Stock']
-        logging.info(f"✅ {len(symbols)} سهم")
-        return symbols
-    except Exception as e:
-        logging.error(f"خطأ: {e}")
-        return []
+def get_active_penny_stocks():
+    """جلب أسهم نشطة تحت $10 من Yahoo Finance Screener"""
+    results = []
+    
+    # قائمة 1: أكثر الأسهم ارتفاعاً اليوم
+    urls = [
+        "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=day_gainers&count=100",
+        "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives&count=100",
+    ]
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    for url in urls:
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                quotes = data.get('finance', {}).get('result', [{}])[0].get('quotes', [])
+                for q in quotes:
+                    sym = q.get('symbol', '')
+                    price = q.get('regularMarketPrice', 0)
+                    if sym and 0.50 <= price <= 10.00:
+                        results.append(sym)
+        except Exception as e:
+            logging.error(f"خطأ Yahoo: {e}")
+    
+    # إزالة المكرر
+    results = list(set(results))
+    logging.info(f"📋 {len(results)} سهم نشط تحت $10")
+    return results
 
-def get_quote(symbol):
+def check_signal(symbol):
     url = "https://finnhub.io/api/v1/quote"
     params = {"symbol": symbol, "token": FINNHUB_KEY}
     try:
         res = requests.get(url, params=params, timeout=5)
-        return res.json()
+        d = res.json()
     except:
-        return {}
-
-def check_signal(symbol):
-    d = get_quote(symbol)
-    if not d:
         return None
 
     price  = d.get("c", 0)
@@ -61,48 +74,32 @@ def check_signal(symbol):
 
     if not price or not prev or prev == 0:
         return None
-
-    # فلتر السعر
     if not (0.50 <= price <= 10.00):
         return None
 
-    # ROC - سرعة الزخم
     roc = ((price - prev) / prev) * 100
-
-    # نسبة الشمعة الخضراء
-    candle_body  = price - open_
     candle_range = high - low if high > low else 0.001
+    candle_body  = price - open_
     bull_pct     = max(0, candle_body / candle_range * 100)
+    mfi          = bull_pct
+    rsi          = max(0, min(100, 50 + roc * 3))
+    adx          = min(100, abs(roc) * 6)
 
-    # فوليوم - نقارن بمعدل بسيط
-    # الـ API المجاني ما يعطي average volume مباشرة
-    # نعوض بفحص إذا الفوليوم كبير نسبياً
-    is_high_vol = volume > 500_000
-    is_mega_vol = volume > 1_500_000
+    is_roc_strong = roc > 3.0
+    trend_strong  = adx > 25
+    is_high_vol   = volume > 300_000
+    is_mega_vol   = volume > 1_000_000
 
-    # MFI تقريبي
-    mfi = bull_pct
-
-    # RSI تقريبي
-    rsi = 50 + (roc * 3)
-    rsi = max(0, min(100, rsi))
-
-    # ADX تقريبي - قوة الحركة
-    adx = min(100, abs(roc) * 6)
-
-    trend_strong = adx > 25
-    is_roc_strong = roc > 3.0  # رفعناه لـ 3% عشان نكون أدق
-
-    # ✅ شروط انفجار الزخم
+    # انفجار زخم 💥
     is_blast = (
         is_mega_vol and
         is_roc_strong and
         mfi > 55 and
         trend_strong and
-        price > open_  # شمعة خضراء
+        price > open_
     )
 
-    # ✅ شروط CALL
+    # CALL 🟢
     is_call = (
         bull_pct > 60 and
         rsi > 55 and
@@ -114,26 +111,20 @@ def check_signal(symbol):
     if not (is_blast or is_call):
         return None
 
-    # الأهداف ووقف الخسارة
     atr       = candle_range
     target1   = round(price + atr * 1.0, 2)
     target2   = round(price + atr * 2.0, 2)
     target_g  = round(price + atr * 3.5, 2)
     stop_loss = round(low - atr * 0.3, 2)
-
-    label = "💥 انفجار زخم + CALL" if is_blast else "🟢 CALL زخم"
+    label     = "💥 انفجار زخم + CALL" if is_blast else "🟢 CALL زخم"
 
     return {
-        "symbol":    symbol,
-        "price":     price,
-        "roc":       round(roc, 2),
-        "volume":    volume,
-        "bull_pct":  round(bull_pct, 1),
-        "target1":   target1,
-        "target2":   target2,
-        "target_g":  target_g,
-        "stop_loss": stop_loss,
-        "label":     label,
+        "symbol": symbol, "price": price,
+        "roc": round(roc, 2), "volume": volume,
+        "bull_pct": round(bull_pct, 1),
+        "target1": target1, "target2": target2,
+        "target_g": target_g, "stop_loss": stop_loss,
+        "label": label,
     }
 
 def scan(symbols):
@@ -161,15 +152,15 @@ def scan(symbols):
             send_msg(msg)
             time.sleep(1)
 
+        # احترام حد الـ API
         if i % 55 == 0 and i > 0:
             time.sleep(61)
 
     logging.info(f"✅ انتهى الفحص - {found} إشارة")
 
 # ── تشغيل ──
-logging.info("🚀 رادار رعد V3 يعمل...")
-send_msg("🔥 *رادار رعد V3* 🔥\n\nالشروط محسّنة - جاري الفحص...")
-symbols = get_us_stocks()
+logging.info("🚀 رادار رعد V4 يعمل...")
+send_msg("🔥 *رادار رعد V4* 🔥\n\nيفحص الأسهم النشطة فقط - أسرع وأدق!")
 
 while True:
     if not is_market_time():
@@ -178,10 +169,11 @@ while True:
         time.sleep(300)
         continue
 
+    symbols = get_active_penny_stocks()
     if symbols:
         scan(symbols)
     else:
-        symbols = get_us_stocks()
+        logging.warning("⚠️ ما في أسهم نشطة")
 
     logging.info("⏰ انتظار 3 دقائق...")
     time.sleep(180)
