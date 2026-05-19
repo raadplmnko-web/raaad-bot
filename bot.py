@@ -15,60 +15,51 @@ def send_msg(text):
     except Exception as e:
         logging.error(f"خطأ تلجرام: {e}")
 
-def scan_us_market_lightning():
-    # استخدام سورس خفيف ومباشر ومفتوح جلب أعلى الأسهم صعوداً وحركة بالماركت
-    url = "https://query1.finance.yahoo.com/v1/finance/scrumb/screener/tokens/day_gainers?size=40"
-    
-    # إضافة حماية ذكية دورية ومحاكاة تصفح كاملة بالثانية لمنع الحظر
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Referer': 'https://finance.yahoo.com/'
-    }
+def scan_all_us_market_final():
+    # استخدام سورس خفيف ومستقر ومفتوح جلب أعلى الأسهم صعوداً وحركة بالماركت بدون حظر
+    url = "https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey=demo"
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        # إذا واجه ضغط مؤقت، نجعله ينتظر ثواني ويعيد المحاولة بسلاسة بدون توقف
-        if response.status_code == 500 or response.status_code == 429:
-            logging.warning("السيرفر يطلب تهدئة الطلبات.. جاري الانتظار والتحديث...")
-            time.sleep(5)
-            return
-            
+        response = requests.get(url, timeout=15)
         if response.status_code == 200:
             data = response.json()
-            quotes = data.get('finance', {}).get('result', [{}])[0].get('quotes', [])
+            top_gainers = data.get('top_gainers', [])
             
             scanned_count = 0
-            for stock in quotes:
-                ticker = stock.get('symbol', '').upper()
+            for stock in top_gainers:
+                ticker = stock.get('ticker', '').upper()
                 
-                # قراءة الأسعار الحية الحالية بالسوق المفتوح
-                price = stock.get('regularMarketPrice')
-                change_percent = stock.get('regularMarketChangePercent')
-                volume = stock.get('regularMarketVolume', 0)
-                
-                if not ticker or price is None or change_percent is None:
+                try:
+                    price = float(stock.get('price', 0))
+                    # تنظيف النسبة المئوية من علامة % وتحويلها لرقم
+                    change_percent = float(stock.get('change_percentage', '0').replace('%', ''))
+                    volume = int(stock.get('volume', 0))
+                except:
                     continue
                 
-                # الفلترة الملكية اللحظية الحين: السعر بين 0.30$ و 10$ + فوليوم تداول فوق 50 ألف
+                if not ticker or price == 0:
+                    continue
+                
+                # الفلترة الملكية المطلوبة: السعر بين 0.30$ و 10$ + فوليوم تداول قوي
                 if 0.30 <= price <= 10.00 and change_percent > 1.0 and volume > 50000:
                     scanned_count += 1
-                    alert_text = f"🚨 *رادار رعد: اقتناص حركة حية بالماركت* 🚨\n\n" \
+                    alert_text = f"⚡ *رادار رعد: اقتناص إنفجاري حقيقي* ⚡\n\n" \
                                  f"🔹 *السهم المكتشف:* `{ticker}`\n" \
                                  f"🟢 **السعر اللحظي الحالي:** `${price:.2f}`\n" \
                                  f"📈 **نسبة الصعود المباشر:** `+{change_percent:.2f}%`\n" \
                                  f"📊 **حجم التداول (Volume):** `{volume:,}`\n" \
                                  f"----------------------------------\n" \
-                                 f"🎯 *الحالة:* اختراق وزخم سيولة نشط في السوق المفتوح الحين!"
+                                 f"🎯 *الحالة:* حركة اختراق صاعدة صريحة من قلب الماركت!"
                     send_msg(alert_text)
                     time.sleep(1.5)
             
-            logging.info(f"🔄 تم فحص السوق بنجاح واكتشاف {scanned_count} أسهم متطابقة للفلتر.")
+            logging.info(f"🔄 تم فحص السوق بنجاح واكتشاف {scanned_count} أسهم مطابقة للفلتر.")
+        else:
+            logging.warning(f"السورس مشغول، رمز الاستجابة: {response.status_code}")
     except Exception as e:
-        logging.error(f"خطأ أثناء قراءة الماركت: {e}")
+        logging.error(f"خطأ أثناء قراءة الماركت الشامل: {e}")
 
-send_msg("🚀 *تم إطلاق النسخة الرادارية الفولاذية والبرق السريع!* \n\nالرادار يفحص الآن الماركت الأمريكي المفتوح بالكامل تحت الـ 10$ وبأعلى ثبات واستقرار دائم.")
+send_msg("🚀 *تم إطلاق النسخة الرادارية النهائية الشاملة بدون حظر!* \n\nالرادار يفحص الآن كل أسهم أمريكا الصاعدة تحت الـ 10$ بأعلى استقرار بالماركت.")
 
 while True:
-    scan_us_market_lightning()
-    time.sleep(60) # فحص مستمر وجديد كل 60 ثانية لسرعة اصطياد الفرص المشتعلة
+    scan_all_us_market_final()
+    time.sleep(90) # دورة فحص مستقرة كل دقيقة ونصف
