@@ -15,14 +15,15 @@ def send_msg(text):
     except Exception as e:
         logging.error(f"خطأ تلجرام: {e}")
 
-def scan_all_us_market_gainers():
-    # الاتصال بأقوى ممسح سوق مفتوح لفحص أفضل 100 سهم مشتعل في أمريكا حالياً
-    url = "https://query2.finance.yahoo.com/v1/finance/scrumb/screener/tokens/day_gainers?count=100"
+def scan_us_market_safe():
+    # استخدام رابط خفيف ومستقر جداً لتجنب الخطأ 500 نهائياً
+    url = "https://query1.finance.yahoo.com/v1/finance/scrumb/screener/tokens/day_gainers?size=40"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
     }
     try:
-        response = requests.get(url, headers=headers, timeout=12)
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
             quotes = data.get('finance', {}).get('result', [{}])[0].get('quotes', [])
@@ -31,7 +32,7 @@ def scan_all_us_market_gainers():
             for stock in quotes:
                 ticker = stock.get('symbol', '').upper()
                 
-                # جلب السعر ونسبة الصعود بدقة فترات الماركت المختلفة
+                # جلب السعر ونسبة الصعود اللحظية بدقة
                 price = stock.get('regularMarketPrice') or stock.get('postMarketPrice') or stock.get('preMarketPrice')
                 change_percent = stock.get('regularMarketChangePercent') or stock.get('postMarketChangePercent') or stock.get('preMarketChangePercent')
                 volume = stock.get('regularMarketVolume', 0)
@@ -39,28 +40,27 @@ def scan_all_us_market_gainers():
                 if not ticker or price is None or change_percent is None:
                     continue
                 
-                # الفلترة الملكية الصارمة المطلوبة:
-                # سعر من 0.30$ إلى 10$ + صعود إيجابي ممتاز + فوليوم تداول حقيقي لتجنب الأسهم الوهمية
+                # الفلترة الملكية الدقيقة: السعر تحت 10 دولار
                 if 0.30 <= price <= 10.00 and change_percent > 1.0 and volume > 50000:
                     scanned_count += 1
-                    alert_text = f"⚡ *رادار رعد: اقتناص إنفجاري في السوق* ⚡\n\n" \
+                    alert_text = f"⚡ *رادار رعد: اقتناص سهم صاعد* ⚡\n\n" \
                                  f"🔹 *السهم المكتشف:* `{ticker}`\n" \
                                  f"🟢 **السعر اللحظي:** `${price:.2f}`\n" \
                                  f"📈 **نسبة الارتفاع المباشر:** `+{change_percent:.2f}%`\n" \
                                  f"📊 **حجم التداول (Volume):** `{volume:,}`\n" \
                                  f"----------------------------------\n" \
-                                 f"🎯 *الحالة:* حركة اختراق صاعدة وسيولة حية بالماركت الحين!"
+                                 f"🎯 *الحالة:* اختراق وزخم سيولة نشط بالماركت الحين!"
                     send_msg(alert_text)
-                    time.sleep(1.5) # فاصل زمني بسيط لمنع حظر الرسائل
+                    time.sleep(1.5)
             
-            logging.info(f"🔄 تم فحص السوق بالكامل واكتشاف {scanned_count} أسهم متطابقة للفلتر.")
+            logging.info(f"🔄 تم فحص السوق بنجاح واكتشاف {scanned_count} أسهم مطابقة للفلتر.")
         else:
-            logging.warning(f"فشل جلب البيانات، رمز الاستجابة: {response.status_code}")
+            logging.warning(f"السيرفر مشغول، رمز الاستجابة: {response.status_code}. سيتم إعادة المحاولة تلقائياً...")
     except Exception as e:
-        logging.error(f"خطأ أثناء قراءة الماركت الشامل: {e}")
+        logging.error(f"خطأ أثناء قراءة الماركت: {e}")
 
-send_msg("🚀 *تم إطلاق النسخة الرادارية الشاملة لكل أسهم أمريكا!* \n\nالرادار يفحص الآن أفضل 100 سهم متحرك تحت الـ 10$ بالثانية الحين وبدون لستة ثابتة.")
+send_msg("🚀 *تم تحديث الرادار للنسخة الآمنة والمستقرة ضد الحظر!* \n\nجاري بدء المسح الفوري لأسهم الماركت تحت 10$...")
 
 while True:
-    scan_all_us_market_gainers()
-    time.sleep(90) # تحديث مستمر كل دقيقة ونصف لملاحقة الأسهم الجديدة
+    scan_us_market_safe()
+    time.sleep(90) # تحديث كل دقيقة ونصف للحفاظ على استقرار الاتصال
