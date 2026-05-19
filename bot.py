@@ -8,9 +8,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 TELEGRAM_TOKEN = "8809048554:AAHFEB7U68hSPydldzQZ5a2TQ205plJ3JKA"
 CHAT_ID = "687056332"
 
-# مفتاح Finnhub السريع واللحظي
-FINNHUB_KEY = "cf96u91r01qgoct1706gcf96u91r01qgoct17070"
-
 def send_msg(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
@@ -18,43 +15,52 @@ def send_msg(text):
     except Exception as e:
         logging.error(f"خطأ تلجرام: {e}")
 
-# لستة شاملة وموسعة لأكثر أسهم الزخم الصغيرة حركة تحت 10$ الحين بالماركت
-WATCHLIST = [
-    "VRAX", "GOVX", "SPRC", "EDBL", "TCBP", "IMPP", "MRAI", "CTNT", "SISI", 
-    "PHUN", "BDRX", "GWAV", "KOSS", "JYNT", "HOLO", "WISA", "AEI", "BURU", 
-    "MDAI", "GNS", "NVOS", "VCNX", "OCEA", "TSHA", "LPA"
-]
-
-def scan_live_watchlist():
-    scanned_count = 0
-    for ticker in WATCHLIST:
-        url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_KEY}"
-        try:
-            res = requests.get(url, timeout=5)
-            if res.status_code == 200:
-                data = res.json()
-                
-                price = float(data.get('c', 0))          # السعر الحالي اللحظي
-                change_percent = float(data.get('dp', 0)) # نسبة التغير اللحظية %
-                
-                # التصفية الملكية الدقيقة: السعر تحت 10 دولار والصعود إيجابي ومتحرك فوق 1%
-                if 0.30 <= price <= 10.00 and change_percent > 1.0:
-                    scanned_count += 1
-                    alert_text = f"🚨 *رادار رعد: اقتناص زخم لحظي* 🚨\n\n" \
-                                 f"🔹 *السهم المكتشف:* `{ticker}`\n" \
-                                 f"🟢 **السعر الآن:** `${price:.2f}`\n" \
-                                 f"📈 **التغير اللحظي:** `+{change_percent:.2f}%`\n" \
-                                 f"----------------------------------\n" \
-                                 f"🎯 الحركة حية ومباشرة من الماركت الحين!"
-                    send_msg(alert_text)
-                    time.sleep(1) # تهدئة الإرسال
-        except Exception as e:
-            logging.error(f"خطأ في فحص {ticker}: {e}")
+def scan_all_us_market_gainers():
+    # الاتصال بأقوى ممسح سوق مفتوح لفحص أفضل 100 سهم مشتعل في أمريكا حالياً
+    url = "https://query2.finance.yahoo.com/v1/finance/scrumb/screener/tokens/day_gainers?count=100"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=12)
+        if response.status_code == 200:
+            data = response.json()
+            quotes = data.get('finance', {}).get('result', [{}])[0].get('quotes', [])
             
-    logging.info(f"🔄 تم فحص اللستة اللحظية واكتشاف {scanned_count} أسهم صاعدة.")
+            scanned_count = 0
+            for stock in quotes:
+                ticker = stock.get('symbol', '').upper()
+                
+                # جلب السعر ونسبة الصعود بدقة فترات الماركت المختلفة
+                price = stock.get('regularMarketPrice') or stock.get('postMarketPrice') or stock.get('preMarketPrice')
+                change_percent = stock.get('regularMarketChangePercent') or stock.get('postMarketChangePercent') or stock.get('preMarketChangePercent')
+                volume = stock.get('regularMarketVolume', 0)
+                
+                if not ticker or price is None or change_percent is None:
+                    continue
+                
+                # الفلترة الملكية الصارمة المطلوبة:
+                # سعر من 0.30$ إلى 10$ + صعود إيجابي ممتاز + فوليوم تداول حقيقي لتجنب الأسهم الوهمية
+                if 0.30 <= price <= 10.00 and change_percent > 1.0 and volume > 50000:
+                    scanned_count += 1
+                    alert_text = f"⚡ *رادار رعد: اقتناص إنفجاري في السوق* ⚡\n\n" \
+                                 f"🔹 *السهم المكتشف:* `{ticker}`\n" \
+                                 f"🟢 **السعر اللحظي:** `${price:.2f}`\n" \
+                                 f"📈 **نسبة الارتفاع المباشر:** `+{change_percent:.2f}%`\n" \
+                                 f"📊 **حجم التداول (Volume):** `{volume:,}`\n" \
+                                 f"----------------------------------\n" \
+                                 f"🎯 *الحالة:* حركة اختراق صاعدة وسيولة حية بالماركت الحين!"
+                    send_msg(alert_text)
+                    time.sleep(1.5) # فاصل زمني بسيط لمنع حظر الرسائل
+            
+            logging.info(f"🔄 تم فحص السوق بالكامل واكتشاف {scanned_count} أسهم متطابقة للفلتر.")
+        else:
+            logging.warning(f"فشل جلب البيانات، رمز الاستجابة: {response.status_code}")
+    except Exception as e:
+        logging.error(f"خطأ أثناء قراءة الماركت الشامل: {e}")
 
-send_msg("🔥 *تم تحويل الرادار للتشغيل اللحظي المباشر عبر Finnhub!* \n\nجاري جلد قائمة أسهم الزخم الحالية وفحص حركتها الحية...")
+send_msg("🚀 *تم إطلاق النسخة الرادارية الشاملة لكل أسهم أمريكا!* \n\nالرادار يفحص الآن أفضل 100 سهم متحرك تحت الـ 10$ بالثانية الحين وبدون لستة ثابتة.")
 
 while True:
-    scan_live_watchlist()
-    time.sleep(60) # فحص متكرر كل دقيقة بدون أي تأخير
+    scan_all_us_market_gainers()
+    time.sleep(90) # تحديث مستمر كل دقيقة ونصف لملاحقة الأسهم الجديدة
