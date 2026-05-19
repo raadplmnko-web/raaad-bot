@@ -11,14 +11,13 @@ CHAT_ID = "687056332"
 def send_msg(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        res = requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"})
-        logging.info(f"استجابة التلجرام: {res.json()}")
+        requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"})
     except Exception as e:
-        logging.error(f"خطأ إرسال تلجرام: {e}")
+        logging.error(f"خطأ تلجرام: {e}")
 
-def get_penny_stocks_under_10():
-    # إضافة أمر تفصيلي للياهو بجلب أسعار ما بعد وما قبل السوق الحية فوراً
-    url = "https://query1.finance.yahoo.com/v1/finance/scrumb/screener/tokens/day_gainers?includePrePost=true"
+def scan_live_market_gainers():
+    # سحب الأسهم الأكثر صعوداً وفوليوم الحين أثناء السوق المفتوح
+    url = "https://query1.finance.yahoo.com/v1/finance/scrumb/screener/tokens/day_gainers?size=50"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
     }
@@ -31,35 +30,32 @@ def get_penny_stocks_under_10():
             scanned_count = 0
             for stock in quotes:
                 ticker = stock.get('symbol', '').upper()
-                
-                # قراءة سعر فترة ما بعد/قبل السوق إذا كان السوق مغلقاً، وإلا يقرأ السعر الرسمي
-                price = stock.get('postMarketPrice') or stock.get('preMarketPrice') or stock.get('regularMarketPrice')
-                change_percent = stock.get('postMarketChangePercent') or stock.get('preMarketChangePercent') or stock.get('regularMarketChangePercent')
+                price = stock.get('regularMarketPrice')
+                change_percent = stock.get('regularMarketChangePercent')
                 volume = stock.get('regularMarketVolume', 0)
                 
                 if not ticker or price is None or change_percent is None:
                     continue
                 
-                # الفلترة الملكية الصارمة: أقل من 10 دولار
-                if 0.50 <= price <= 10.00 and change_percent > 1.0 and volume > 100000:
+                # الفلترة الملكية اللحظية الحين: السعر تحت 10 دولار + صعود فوق 1% + فوليوم عالي
+                if 0.30 <= price <= 10.00 and change_percent > 1.0 and volume > 100000:
                     scanned_count += 1
-                    alert_text = f"⚡ *رادار رعد: قنص فترات السوق الممتدة* ⚡\n\n" \
+                    alert_text = f"🔥 *رادار رعد: انفجار لحظي في السوق!* 🔥\n\n" \
                                  f"🔹 *السهم المكتشف:* `{ticker}`\n" \
-                                 f"🟢 **السعر اللحظي (خارج السوق):** `${price:.2f}`\n" \
-                                 f"📈 **نسبة التغير اللحظية:** `+{change_percent:.2f}%`\n" \
-                                 f"📊 **حجم التداول العام:** `{volume:,}`\n" \
+                                 f"🟢 **السعر اللحظي الحالي:** `${price:.2f}`\n" \
+                                 f"📈 **نسبة الصعود الحالية:** `+{change_percent:.2f}%`\n" \
+                                 f"📊 **حجم التداول (Volume):** `{volume:,}`\n" \
                                  f"----------------------------------\n" \
-                                 f"🎯 *الحالة:* رصد حركة سيولة نشطة خارج أوقات الماركت الرسمية!"
+                                 f"🎯 *الحالة:* سيولة ضخمة وزخم اشتعال حيي بالماركت الحين!"
                     send_msg(alert_text)
-                    time.sleep(1)
-            logging.info(f"🔄 تم فحص أسهم الزخم الممتد بنجاح واكتشاف {scanned_count} أسهم.")
+                    time.sleep(1) # فاصل سريع لمنع تعليق الرسائل
+            logging.info(f"🔄 تم مسح السوق المفتوح بنجاح واكتشاف {scanned_count} أسهم تحت الـ 10$.")
     except Exception as e:
-        logging.error(f"خطأ أثناء جلب البيانات: {e}")
+        logging.error(f"خطأ أثناء قراءة الماركت: {e}")
 
-logging.info("🚀 تشغيل رادار رعد للفلترة الشاملة (رسمي + ممتد)...")
-
-send_msg("🔥 *تم تحديث الرادار لدعم فترات Pre-Market و After-Hours!* 🔥\n\nالرادار الآن يراقب أي حركة فجائية من الساعة 11:00 صباحاً وحتى 3:00 الفجر للأسهم الأقل من 10$.")
+# رسالة عاجلة لتأكيد التشغيل وسط المعركة
+send_msg("🚀 *تم إطلاق رادار رعد الحي في قلب السوق المفتوح الآن!* \n\nالفحص مضبوط كل 60 ثانية لاقتناص الأسهم الطائرة تحت 10$ فوراً.")
 
 while True:
-    get_penny_stocks_under_10()
-    time.sleep(180)
+    scan_live_market_gainers()
+    time.sleep(60) # فحص حار وجديد كل دقيقة عشان ما تفوتك ولا حركة!
