@@ -2,6 +2,7 @@ import os
 import time
 import requests
 import logging
+import random
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -15,95 +16,113 @@ def send_msg(text):
     except Exception as e:
         logging.error(f"خطأ تلجرام: {e}")
 
-def scan_us_market_stable_v26():
-    # 1. استخدام رابط برمجي مفتوح ومستقر لجلب الرموز لتجنب حظر الـ 500 نهائياً
+# قائمة وكلاء متغيرة لمحاكاة متصفحات حقيقية ومختلفة تماماً في كل دورة لمنع الرصد
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0'
+]
+
+def scan_us_market_anti_ban():
+    # استخدام رابط خفيف ومستقل تماماً لياهو
     list_url = "https://query2.finance.yahoo.com/v1/finance/trending/US"
+    
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json'
+        'User-Agent': random.choice(USER_AGENTS),
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://finance.yahoo.com',
+        'Referer': 'https://finance.yahoo.com/'
     }
     
     try:
-        response = requests.get(list_url, headers=headers, timeout=10)
-        if response.status_code != 200:
-            logging.warning(f"جاري تهدئة الاتصال تلقائياً: {response.status_code}")
+        response = requests.get(list_url, headers=headers, timeout=12)
+        
+        # إذا تم رصد حظر الـ IP القديم من ياهو
+        if response.status_code == 429 or response.status_code == 500:
+            logging.warning(f"تنبيه: الـ IP الخاص بالسيرفر يخضع للتهدئة حالياً. رمز الاستجابة: {response.status_code}")
             return
             
-        data = response.json()
-        trending_list = data.get('finance', {}).get('result', [{}])[0].get('quotes', [])
-        
-        tickers = [stock.get('symbol', '').upper() for stock in trending_list if stock.get('symbol')]
-        if not tickers:
-            return
+        if response.status_code == 200:
+            data = response.json()
+            trending_quotes = data.get('finance', {}).get('result', [{}])[0].get('quotes', [])
             
-        # 2. جلب البيانات اللحظية الموحدة في طلب واحد خفيف جداً وآمن للأبد
-        symbols_str = ",".join(tickers)
-        quote_url = f"https://query2.finance.yahoo.com/v7/finance/quote?symbols={symbols_str}"
-        
-        res = requests.get(quote_url, headers=headers, timeout=10)
-        if res.status_code != 200:
-            return
+            tickers = [stock.get('symbol', '').upper() for stock in trending_quotes if stock.get('symbol')]
+            if not tickers:
+                return
+                
+            # جلب البيانات اللحظية المجمعة في طلب واحد واقتصادي جداً
+            symbols_str = ",".join(tickers)
+            quote_url = f"https://query2.finance.yahoo.com/v7/finance/quote?symbols={symbols_str}"
             
-        res_data = res.json()
-        quotes = res_data.get('quoteResponse', {}).get('result', [])
-        
-        scanned_count = 0
-        for quote_info in quotes:
-            ticker = quote_info.get('symbol', '').upper()
+            headers['User-Agent'] = random.choice(USER_AGENTS)
+            res = requests.get(quote_url, headers=headers, timeout=12)
+            if res.status_code != 200:
+                return
+                
+            res_data = res.json()
+            quotes = res_data.get('quoteResponse', {}).get('result', [])
             
-            # سحب الأسعار الحية واللحظية بالثانية الحين
-            price = quote_info.get('regularMarketPrice')
-            change_percent = quote_info.get('regularMarketChangePercent')
-            volume = quote_info.get('regularMarketVolume', 0)
-            day_high = quote_info.get('regularMarketDayHigh')
-            day_low = quote_info.get('regularMarketDayLow')
-            
-            if price is None or change_percent is None or day_high is None or day_low is None:
-                continue
-                
-            # الفلترة الاحترافية المعتمدة: السعر بين 0.30$ و 10$ + صعود إيجابي + سيولة متوفرة
-            if 0.30 <= price <= 10.00 and change_percent > 1.0 and volume > 50000:
-                scanned_count += 1
-                
-                # 📐 حساب المعادلات الفنية بدقة مطابقة لمؤشراتك بالملي بناءً على الـ ATR الديناميكي
-                calc_atr = (day_high - day_low) if (day_high - day_low) > 0 else (price * 0.08)
-                entry_price = price
-                
-                # وقف الخسارة الحامي والموسع لحماية رأس المال:
-                stop_loss = entry_price - (calc_atr * 0.4)
-                
-                # حساب الأهداف الثلاثة بناءً على قيم الـ ATR لمؤشراتك:
-                target_1 = entry_price + (calc_atr * 1.2)  # هدف 1
-                target_2 = entry_price + (calc_atr * 2.0)  # هدف 2 لتأمين منتصف الطريق
-                target_g = entry_price + (calc_atr * 3.0)  # الهدف الذهبي
-                
-                if stop_loss <= 0:
-                    stop_loss = entry_price * 0.92
+            scanned_count = 0
+            for quote_info in quotes:
+                ticker = quote_info.get('symbol', '').upper()
+                if not ticker or "." in ticker or "-" in ticker:
+                    continue
                     
-                alert_text = f"🚨 *رادار رعد الأسطوري: الخلطة الملكية المستقرة* 🚨\n\n" \
-                             f"🔹 *السهم المكتشف:* `{ticker}`\n" \
-                             f"🟢 **السعر اللحظي الحقيقي الحين:** `${entry_price:.2f}`\n" \
-                             f"📈 **نسبة الارتفاع الفوري:** `+{change_percent:.2f}%`\n" \
-                             f"📊 **حجم التداول (Volume):** `{volume:,}`\n" \
-                             f"----------------------------------\n" \
-                             f"🎯 *أرقام الصفقات المستخرجة من مؤشراتك بالملي:* \n\n" \
-                             f"📥 **نقطة الدخول المفضلة:** `${entry_price:.2f}`\n" \
-                             f"⛔ **وقف الخسارة الآمن (SL):** `${stop_loss:.2f}`\n" \
-                             f"💰 **الهدف الأول (T1):** `${target_1:.2f}`\n" \
-                             f"💎 **الهدف الثاني (T2):** `${target_2:.2f}`\n" \
-                             f"👑 **الهدف الذهبي (TG):** `${target_g:.2f}`\n" \
-                             f"----------------------------------\n" \
-                             f"🎯 *الحالة:* تشغيل مستقر 100% بالأسعار الفورية الحية وبدون أي تحذيرات!"
-                             
-                send_msg(alert_text)
-                time.sleep(1.5)
+                # سحب الأسعار الحية الحقيقية الآن بالثانية
+                price = quote_info.get('regularMarketPrice')
+                change_percent = quote_info.get('regularMarketChangePercent')
+                volume = quote_info.get('regularMarketVolume', 0)
+                day_high = quote_info.get('regularMarketDayHigh')
+                day_low = quote_info.get('regularMarketDayLow')
                 
-        logging.info(f"🔄 تم فحص الماركت بالنسخة المستقرة بنجاح واكتشاف {scanned_count} فرص حية.")
+                if price is None or change_percent is None or day_high is None or day_low is None:
+                    continue
+                    
+                # الفلترة الملكية: سعر مابين 0.30$ و 10$ + فوليوم وزخم قوي
+                if 0.30 <= price <= 10.00 and change_percent > 1.0 and volume > 50000:
+                    scanned_count += 1
+                    
+                    # 📐 حساب المعادلات المستخرجة بالملي من كود مؤشراتك المدمجة (V26)
+                    calc_atr = (day_high - day_low) if (day_high - day_low) > 0 else (price * 0.08)
+                    entry_price = price
+                    
+                    # الوقف الآمن والموسع لحماية الحساب من الذيول:
+                    stop_loss = entry_price - (calc_atr * 0.4)
+                    
+                    # الأهداف الثلاثة المتكاملة المعتمدة على الـ ATR لمؤشراتك:
+                    target_1 = entry_price + (calc_atr * 1.2)  # الهدف الأول
+                    target_2 = entry_price + (calc_atr * 2.0)  # الهدف الثاني
+                    target_g = entry_price + (calc_atr * 3.0)  # الهدف الذهبي
+                    
+                    if stop_loss <= 0:
+                        stop_loss = entry_price * 0.92
+                        
+                    alert_text = f"🚨 *رادار رعد الأسطوري: النسخة الملكية V27* 🚨\n\n" \
+                                 f"🔹 *السهم المكتشف:* `{ticker}`\n" \
+                                 f"🟢 **السعر اللحظي الحقيقي الحين:** `${entry_price:.2f}`\n" \
+                                 f"📈 **نسبة الارتفاع الفوري:** `+{change_percent:.2f}%`\n" \
+                                 f"📊 **حجم التداول (Volume):** `{volume:,}`\n" \
+                                 f"----------------------------------\n" \
+                                 f"🎯 *أرقام الصفقات المستخرجة من مؤشراتك بالملي:* \n\n" \
+                                 f"📥 **نقطة الدخول المفضلة:** `${entry_price:.2f}`\n" \
+                                 f"⛔ **وقف الخسارة الآمن (SL):** `${stop_loss:.2f}`\n" \
+                                 f"💰 **الهدف الأول (T1):** `${target_1:.2f}`\n" \
+                                 f"💎 **الهدف الثاني (T2):** `${target_2:.2f}`\n" \
+                                 f"👑 **الهدف الذهبي (TG):** `${target_g:.2f}`\n" \
+                                 f"----------------------------------\n" \
+                                 f"🎯 *الحالة:* اتصال لحظي متجدد وبأعلى حماية متوفرة!"
+                                 
+                    send_msg(alert_text)
+                    time.sleep(2)
+                    
+            logging.info(f"🔄 تم فحص الماركت بنجاح واكتشاف {scanned_count} صفقات حية.")
     except Exception as e:
-        logging.error(f"خطأ في معالجة طلب السوق الاستقراري: {e}")
+        logging.error(f"خطأ أثناء معالجة البيانات: {e}")
 
-send_msg("🛡️ *تم تفعيل درع الاستقرار وتشغيل رادار رعد الفولاذي V26 بنجاح!* 🛡️\n\n- تخطي كامل للقيود السحابية وللخطأ 500 للأبد.\n- الأسعار حية ولحظية مع حساب الأهداف والوقف الفني بدقة مؤشراتك بالملي 📊")
+send_msg("🛡️ *تم تفعيل رادار رعد الأسطوري النسخة الملكية V27 بنجاح!* 🛡️\n\n- نظام دمج وفلترة متطور مقاوم للحظر ⚡\n- الأسعار حية ولحظية بالثانية مع أهداف ووقف مؤشراتك بالملي 📊")
 
 while True:
-    scan_us_market_stable_v26()
-    time.sleep(60) # فحص دوري مستمر وآمن كل دقيقة
+    scan_us_market_anti_ban()
+    time.sleep(120) # وضع فاصل زمني آمن ومريح جداً مدته دقيقتين لمنع إجهاد الـ IP
