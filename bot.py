@@ -11,6 +11,9 @@ CHAT_ID = "687056332"
 FINNHUB_KEY = "d6fnilhr01qqnmbpbjc0d6fnilhr01qqnmbpbjcg"
 NY_TZ = pytz.timezone("America/New_York")
 
+# تتبع الأسهم المرسلة - لا نكرر نفس السهم كل دورة
+sent_today = {}
+
 def is_market_time():
     now = datetime.now(NY_TZ)
     if now.weekday() >= 5:
@@ -27,16 +30,12 @@ def send_msg(text):
         logging.error(f"خطأ تلجرام: {e}")
 
 def get_active_penny_stocks():
-    """جلب أسهم نشطة تحت $10 من Yahoo Finance Screener"""
     results = []
-    
-    # قائمة 1: أكثر الأسهم ارتفاعاً اليوم
     urls = [
         "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=day_gainers&count=100",
         "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives&count=100",
     ]
     headers = {'User-Agent': 'Mozilla/5.0'}
-    
     for url in urls:
         try:
             res = requests.get(url, headers=headers, timeout=10)
@@ -50,8 +49,6 @@ def get_active_penny_stocks():
                         results.append(sym)
         except Exception as e:
             logging.error(f"خطأ Yahoo: {e}")
-    
-    # إزالة المكرر
     results = list(set(results))
     logging.info(f"📋 {len(results)} سهم نشط تحت $10")
     return results
@@ -77,46 +74,62 @@ def check_signal(symbol):
     if not (0.50 <= price <= 10.00):
         return None
 
-    roc = ((price - prev) / prev) * 100
+    # ── المؤشرات ──
+    roc          = ((price - prev) / prev) * 100
     candle_range = high - low if high > low else 0.001
     candle_body  = price - open_
     bull_pct     = max(0, candle_body / candle_range * 100)
-    mfi          = bull_pct
     rsi          = max(0, min(100, 50 + roc * 3))
-    adx          = min(100, abs(roc) * 6)
+    adx          = min(100, abs(roc) * 5)
 
-    is_roc_strong = roc > 3.0
-    trend_strong  = adx > 25
-    is_high_vol   = volume > 300_000
-    is_mega_vol   = volume > 1_000_000
+    is_green     = price > open_
+    is_roc_ok    = roc > 2.0        # ✅ خُفف من 3%
+    trend_ok     = adx > 20         # ✅ خُفف من 25
+    is_high_vol  = volume > 200_000 # ✅ خُفف من 300K
+    is_mega_vol  = volume > 800_000 # ✅ خُفف من 1M
 
-    # انفجار زخم 💥
+    # 💥 انفجار زخم
     is_blast = (
         is_mega_vol and
-        is_roc_strong and
-        mfi > 55 and
-        trend_strong and
-        price > open_
+        is_roc_ok and
+        bull_pct > 50 and
+        trend_ok and
+        is_green
     )
 
-    # CALL 🟢
+    # 🟢 CALL زخم
     is_call = (
-        bull_pct > 60 and
-        rsi > 55 and
-        is_roc_strong and
+        bull_pct > 55 and
+        rsi > 52 and
+        is_roc_ok and
         is_high_vol and
-        price > open_
+        is_green
     )
 
-    if not (is_blast or is_call):
+    # ⚡ بداية زخم - إشارة أخف
+    is_early = (
+        roc > 1.5 and
+        is_green and
+        is_high_vol and
+        bull_pct > 45
+    )
+
+    if not (is_blast or is_call or is_early):
         return None
 
+    # الأهداف
     atr       = candle_range
-    target1   = round(price + atr * 1.0, 2)
-    target2   = round(price + atr * 2.0, 2)
-    target_g  = round(price + atr * 3.5, 2)
-    stop_loss = round(low - atr * 0.3, 2)
-    label     = "💥 انفجار زخم + CALL" if is_blast else "🟢 CALL زخم"
+    target1   = round(price + atr * 1.0, 3)
+    target2   = round(price + atr * 2.0, 3)
+    target_g  = round(price + atr * 3.5, 3)
+    stop_loss = round(low - atr * 0.3, 3)
+
+    if is_blast:
+        label = "💥 انفجار زخم"
+    elif is_call:
+        label = "🟢 CALL زخم"
+    else:
+        label = "⚡ بداية زخم"
 
     return {
         "symbol": symbol, "price": price,
@@ -129,15 +142,23 @@ def check_signal(symbol):
 
 def scan(symbols):
     found = 0
+    now_key = datetime.now(NY_TZ).strftime("%Y-%m-%d")
+
     for i, symbol in enumerate(symbols):
+        # لا نكرر نفس السهم أكثر من مرة كل 30 دقيقة
+        last_sent = sent_today.get(symbol, 0)
+        if time.time() - last_sent < 1800:
+            continue
+
         result = check_signal(symbol)
         if result:
             found += 1
+            sent_today[symbol] = time.time()
             msg = (
                 f"{result['label']}\n"
                 f"━━━━━━━━━━━━━━━━\n"
                 f"📌 *السهم:* `{result['symbol']}`\n"
-                f"💵 *السعر:* `${result['price']:.2f}`\n"
+                f"💵 *السعر:* `${result['price']:.3f}`\n"
                 f"⚡ *ROC:* `{result['roc']}%`\n"
                 f"📊 *زخم الشمعة:* `{result['bull_pct']}%`\n"
                 f"📦 *الفوليوم:* `{result['volume']:,}`\n"
@@ -147,20 +168,19 @@ def scan(symbols):
                 f"🏆 *الهدف الذهبي:* `${result['target_g']}`\n"
                 f"🛑 *وقف الخسارة:* `${result['stop_loss']}`\n"
                 f"━━━━━━━━━━━━━━━━\n"
-                f"🚀 *رادار رعد*"
+                f"🚀 *رادار رعد V5*"
             )
             send_msg(msg)
             time.sleep(1)
 
-        # احترام حد الـ API
         if i % 55 == 0 and i > 0:
             time.sleep(61)
 
     logging.info(f"✅ انتهى الفحص - {found} إشارة")
 
 # ── تشغيل ──
-logging.info("🚀 رادار رعد V4 يعمل...")
-send_msg("🔥 *رادار رعد V4* 🔥\n\nيفحص الأسهم النشطة فقط - أسرع وأدق!")
+logging.info("🚀 رادار رعد V5 يعمل...")
+send_msg("🔥 *رادار رعد V5* 🔥\n\nشروط محسّنة - 3 مستويات إشارات!")
 
 while True:
     if not is_market_time():
@@ -173,7 +193,7 @@ while True:
     if symbols:
         scan(symbols)
     else:
-        logging.warning("⚠️ ما في أسهم نشطة")
+        logging.warning("⚠️ ما في أسهم")
 
     logging.info("⏰ انتظار 3 دقائق...")
     time.sleep(180)
