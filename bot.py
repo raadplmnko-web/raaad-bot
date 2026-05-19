@@ -9,18 +9,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 TELEGRAM_TOKEN = "8809048554:AAHFEB7U68hSPydldzQZ5a2TQ205plJ3JKA"
 CHAT_ID = "687056332"
 FINNHUB_KEY = "d6fnilhr01qqnmbpbjc0d6fnilhr01qqnmbpbjcg"
-
 NY_TZ = pytz.timezone("America/New_York")
 
 def is_market_time():
     now = datetime.now(NY_TZ)
-    if now.weekday() >= 5:  # السبت والأحد
+    if now.weekday() >= 5:
         return False
-    h, m = now.hour, now.minute
-    total = h * 60 + m
-    pre_market  = (4 * 60) <= total < (9 * 60 + 30)   # 4:00 - 9:30
-    market      = (9 * 60 + 30) <= total < (16 * 60)  # 9:30 - 4:00
-    return pre_market or market
+    t = now.hour * 60 + now.minute
+    return (4 * 60) <= t < (16 * 60)
 
 def send_msg(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -29,16 +25,6 @@ def send_msg(text):
         logging.info(f"تلجرام: {res.status_code}")
     except Exception as e:
         logging.error(f"خطأ تلجرام: {e}")
-
-def get_candles(symbol, resolution="1", count=30):
-    """جلب شمعات للحساب"""
-    url = "https://finnhub.io/api/v1/quote"
-    params = {"symbol": symbol, "token": FINNHUB_KEY}
-    try:
-        res = requests.get(url, params=params, timeout=5)
-        return res.json()
-    except:
-        return {}
 
 def get_us_stocks():
     url = "https://finnhub.io/api/v1/stock/symbol"
@@ -52,192 +38,138 @@ def get_us_stocks():
         logging.error(f"خطأ: {e}")
         return []
 
-def get_stock_data(symbol):
-    """جلب بيانات السهم الكاملة"""
+def get_quote(symbol):
     url = "https://finnhub.io/api/v1/quote"
     params = {"symbol": symbol, "token": FINNHUB_KEY}
     try:
         res = requests.get(url, params=params, timeout=5)
-        d = res.json()
-        return {
-            "price": d.get("c", 0),       # السعر الحالي
-            "open":  d.get("o", 0),       # الافتتاح
-            "high":  d.get("h", 0),       # الأعلى
-            "low":   d.get("l", 0),       # الأدنى
-            "prev":  d.get("pc", 0),      # إغلاق أمس
-            "volume": d.get("v", 0),      # الفوليوم
-        }
+        return res.json()
     except:
         return {}
 
-def calc_indicators(d, avg_vol):
-    """حساب المؤشرات - نفس منطق TradingView"""
-    price  = d["price"]
-    open_  = d["open"]
-    high   = d["high"]
-    low    = d["low"]
-    prev   = d["prev"]
-    vol    = d["volume"]
+def check_signal(symbol):
+    d = get_quote(symbol)
+    if not d:
+        return None
+
+    price  = d.get("c", 0)
+    open_  = d.get("o", 0)
+    high   = d.get("h", 0)
+    low    = d.get("l", 0)
+    prev   = d.get("pc", 0)
+    volume = d.get("v", 0)
 
     if not price or not prev or prev == 0:
+        return None
+
+    # فلتر السعر
+    if not (0.50 <= price <= 10.00):
         return None
 
     # ROC - سرعة الزخم
     roc = ((price - prev) / prev) * 100
 
-    # فوليوم
-    is_high_vol = vol > avg_vol * 2.0
-    is_mega_vol = vol > avg_vol * 3.5
+    # نسبة الشمعة الخضراء
+    candle_body  = price - open_
+    candle_range = high - low if high > low else 0.001
+    bull_pct     = max(0, candle_body / candle_range * 100)
 
-    # MFI تقريبي - نسبة الشمعة الصاعدة
-    candle_range = high - low if high > low else 0.01
-    bull_body    = max(0, price - open_) / candle_range
-    mfi_approx   = bull_body * 100  # 0-100
+    # فوليوم - نقارن بمعدل بسيط
+    # الـ API المجاني ما يعطي average volume مباشرة
+    # نعوض بفحص إذا الفوليوم كبير نسبياً
+    is_high_vol = volume > 500_000
+    is_mega_vol = volume > 1_500_000
 
-    # RSI تقريبي بالشمعة الواحدة
-    change = price - prev
-    rsi_approx = 50 + (change / prev * 500)
-    rsi_approx = max(0, min(100, rsi_approx))
+    # MFI تقريبي
+    mfi = bull_pct
+
+    # RSI تقريبي
+    rsi = 50 + (roc * 3)
+    rsi = max(0, min(100, rsi))
 
     # ADX تقريبي - قوة الحركة
-    adx_approx = abs(roc) * 5
-    adx_approx = min(100, adx_approx)
+    adx = min(100, abs(roc) * 6)
 
-    # مستويات الدعم والمقاومة
-    resistance = high
-    support    = low
-    mid        = (resistance + support) / 2
+    trend_strong = adx > 25
+    is_roc_strong = roc > 3.0  # رفعناه لـ 3% عشان نكون أدق
 
-    # تدفق الأموال
-    bull_pct = bull_body * 100
-    bear_pct = 100 - bull_pct
-
-    # ATR تقريبي
-    atr = candle_range
-
-    # الأهداف ووقف الخسارة
-    target1   = price + (atr * 1.0)
-    target2   = price + (atr * 2.0)
-    target_g  = price + (atr * 3.5)
-    stop_loss = support - (atr * 0.3)
-
-    return {
-        "roc":        roc,
-        "mfi":        mfi_approx,
-        "rsi":        rsi_approx,
-        "adx":        adx_approx,
-        "bull_pct":   bull_pct,
-        "bear_pct":   bear_pct,
-        "is_high_vol": is_high_vol,
-        "is_mega_vol": is_mega_vol,
-        "resistance": resistance,
-        "support":    support,
-        "target1":    target1,
-        "target2":    target2,
-        "target_g":   target_g,
-        "stop_loss":  stop_loss,
-        "price":      price,
-    }
-
-def check_signal(ind):
-    """فحص إشارات الزخم - نفس منطق المؤشر"""
-    if not ind:
-        return None
-
-    roc        = ind["roc"]
-    mfi        = ind["mfi"]
-    rsi        = ind["rsi"]
-    adx        = ind["adx"]
-    bull_pct   = ind["bull_pct"]
-    is_high_vol = ind["is_high_vol"]
-    is_mega_vol = ind["is_mega_vol"]
-    price      = ind["price"]
-    resistance = ind["resistance"]
-
-    is_roc_strong = roc > 2.0
-    trend_strong  = adx > 25
-    trend_weak    = adx < 20
-
-    # ✅ انفجار زخم 💥 - أقوى إشارة
-    is_momentum_blast = (
+    # ✅ شروط انفجار الزخم
+    is_blast = (
         is_mega_vol and
         is_roc_strong and
-        price >= resistance * 0.98 and
-        mfi > 60 and
-        trend_strong
-    )
-
-    # ✅ CALL 🟢
-    is_call = (
-        bull_pct > 65 and
-        rsi > 55 and
+        mfi > 55 and
         trend_strong and
-        is_roc_strong
+        price > open_  # شمعة خضراء
     )
 
-    if is_momentum_blast and is_call:
-        return "blast"   # انفجار زخم + CALL معاً ✅ الأقوى
-    elif is_momentum_blast:
-        return "blast"
-    elif is_call and is_high_vol and is_roc_strong:
-        return "call"
+    # ✅ شروط CALL
+    is_call = (
+        bull_pct > 60 and
+        rsi > 55 and
+        is_roc_strong and
+        is_high_vol and
+        price > open_
+    )
 
-    return None
+    if not (is_blast or is_call):
+        return None
 
-def scan(symbols, avg_volumes):
+    # الأهداف ووقف الخسارة
+    atr       = candle_range
+    target1   = round(price + atr * 1.0, 2)
+    target2   = round(price + atr * 2.0, 2)
+    target_g  = round(price + atr * 3.5, 2)
+    stop_loss = round(low - atr * 0.3, 2)
+
+    label = "💥 انفجار زخم + CALL" if is_blast else "🟢 CALL زخم"
+
+    return {
+        "symbol":    symbol,
+        "price":     price,
+        "roc":       round(roc, 2),
+        "volume":    volume,
+        "bull_pct":  round(bull_pct, 1),
+        "target1":   target1,
+        "target2":   target2,
+        "target_g":  target_g,
+        "stop_loss": stop_loss,
+        "label":     label,
+    }
+
+def scan(symbols):
     found = 0
     for i, symbol in enumerate(symbols):
-        d = get_stock_data(symbol)
-        if not d or not d.get("price"):
-            continue
-
-        price = d["price"]
-        if not (0.50 <= price <= 10.00):
-            continue
-
-        avg_vol = avg_volumes.get(symbol, d["volume"] * 0.5)
-        ind     = calc_indicators(d, avg_vol)
-        signal  = check_signal(ind)
-
-        if signal:
+        result = check_signal(symbol)
+        if result:
             found += 1
-            if signal == "blast":
-                emoji = "💥"
-                label = "انفجار زخم + CALL"
-            else:
-                emoji = "🟢"
-                label = "CALL زخم"
-
             msg = (
-                f"{emoji} *{label}* {emoji}\n"
+                f"{result['label']}\n"
                 f"━━━━━━━━━━━━━━━━\n"
-                f"📌 *السهم:* `{symbol}`\n"
-                f"💵 *السعر:* `${price:.2f}`\n"
-                f"⚡ *ROC:* `{ind['roc']:.2f}%`\n"
-                f"📊 *MFI:* `{ind['mfi']:.0f}%`\n"
+                f"📌 *السهم:* `{result['symbol']}`\n"
+                f"💵 *السعر:* `${result['price']:.2f}`\n"
+                f"⚡ *ROC:* `{result['roc']}%`\n"
+                f"📊 *زخم الشمعة:* `{result['bull_pct']}%`\n"
+                f"📦 *الفوليوم:* `{result['volume']:,}`\n"
                 f"━━━━━━━━━━━━━━━━\n"
-                f"🎯 *هدف 1:* `${ind['target1']:.2f}`\n"
-                f"🎯 *هدف 2:* `${ind['target2']:.2f}`\n"
-                f"🏆 *الهدف الذهبي:* `${ind['target_g']:.2f}`\n"
-                f"🛑 *وقف الخسارة:* `${ind['stop_loss']:.2f}`\n"
+                f"🎯 *هدف 1:* `${result['target1']}`\n"
+                f"🎯 *هدف 2:* `${result['target2']}`\n"
+                f"🏆 *الهدف الذهبي:* `${result['target_g']}`\n"
+                f"🛑 *وقف الخسارة:* `${result['stop_loss']}`\n"
                 f"━━━━━━━━━━━━━━━━\n"
-                f"🚀 *رادار رعد - زخم حقيقي*"
+                f"🚀 *رادار رعد*"
             )
             send_msg(msg)
             time.sleep(1)
 
-        # احترام حد الـ API
         if i % 55 == 0 and i > 0:
             time.sleep(61)
 
     logging.info(f"✅ انتهى الفحص - {found} إشارة")
 
 # ── تشغيل ──
-logging.info("🚀 رادار رعد V2 يعمل...")
-send_msg("🔥 *رادار رعد V2 شغّال* 🔥\n\nيراقب أسهم تحت $10 مع إشارات انفجار الزخم...")
-
-symbols     = get_us_stocks()
-avg_volumes = {}  # نبني معدل الفوليوم مع الوقت
+logging.info("🚀 رادار رعد V3 يعمل...")
+send_msg("🔥 *رادار رعد V3* 🔥\n\nالشروط محسّنة - جاري الفحص...")
+symbols = get_us_stocks()
 
 while True:
     if not is_market_time():
@@ -247,7 +179,7 @@ while True:
         continue
 
     if symbols:
-        scan(symbols, avg_volumes)
+        scan(symbols)
     else:
         symbols = get_us_stocks()
 
