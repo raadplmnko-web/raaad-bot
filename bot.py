@@ -18,31 +18,35 @@ def send_msg(text):
     except Exception as e:
         logging.error(f"خطأ تلجرام: {e}")
 
-def scan_momentum_market_v33():
+# قائمة محدثة لأكثر أسهم الزخم نشاطاً لضمان عدم وجود أخطاء "Screen"
+MOMENTUM_WATCHLIST = [
+    "AMST", "HOLO", "MULN", "GNS", "JAGX", "IMMP", "GCTS", "PHUN", "AI", "SOUN",
+    "NVD", "SISI", "REVB", "MNDR", "LIPO", "NKGN", "LGVN", "MDAI", "AGBA", "GWAV",
+    "AIM", "BMEA", "BRSH", "CNEY", "EDBL", "ICU", "KAVL", "LPA", "MGIH", "NBY",
+    "OCEA", "SIER", "TCBP", "VRAX", "XFOR", "AMAM", "BETR", "INBS", "MEDS", "PEV"
+]
+
+def scan_momentum_market_v34():
     global ticker_counters
-    logging.info("🚀 جاري صيد أسهم الزخم الانفجاري...")
+    logging.info("🚀 جاري صيد الزخم الانفجاري (النسخة المستقرة V34)...")
     
     try:
-        # مسح السوق بحثاً عن الأسهم الأكثر نشاطاً في التداول (Most Active) وليس فقط الرابحة
-        screener = yf.Screen(key='most_active')
-        tickers = [quote['symbol'] for quote in screener.quotes]
+        # جلب البيانات لكل الأسهم في القائمة
+        tickers_data = yf.download(MOMENTUM_WATCHLIST, group_by='ticker', period='2d', interval='1m', progress=False)
         
-        # فلترة مبدئية لسرعة الأداء
-        clean_watchlist = [t for t in tickers if "." not in t and "-" not in t][:50]
-        tickers_data = yf.download(clean_watchlist, group_by='ticker', period='2d', interval='1m', progress=False)
-        
-        for ticker in clean_watchlist:
+        for ticker in MOMENTUM_WATCHLIST:
             try:
+                if ticker not in tickers_data.columns.levels[0]: continue
                 stock_history = tickers_data[ticker]
                 if len(stock_history) < 2: continue
                 
                 # بيانات لحظية
                 curr_price = float(stock_history['Close'].iloc[-1])
-                prev_volume = float(stock_history['Volume'].iloc[-2]) # فوليوم الدقيقة السابقة
-                curr_volume = float(stock_history['Volume'].iloc[-1]) # فوليوم الدقيقة الحالية
+                prev_volume = float(stock_history['Volume'].iloc[-2]) 
+                curr_volume = float(stock_history['Volume'].iloc[-1])
                 
-                # فلتر الزخم: سعر تحت 5$ + انفجار في الفوليوم (الدقيقة الحالية > 3 أضعاف السابقة)
-                if 0.30 <= curr_price <= 5.00 and curr_volume > (prev_volume * 3) and curr_volume > 200000:
+                # فلتر الزخم: سعر تحت 5$ + انفجار في الفوليوم (الدقيقة الحالية > 2 ضعف السابقة)
+                if 0.30 <= curr_price <= 5.00 and curr_volume > (prev_volume * 2) and curr_volume > 100000:
                     
                     if ticker not in ticker_counters: ticker_counters[ticker] = 1
                     else: ticker_counters[ticker] += 1
@@ -50,15 +54,15 @@ def scan_momentum_market_v33():
                     entry_price = curr_price
                     alert_text = f"⚡ *رادار الزخم الانفجاري: صيد جديد!* ⚡\n\n" \
                                  f"🔹 *الرمز:* `{ticker}`\n" \
-                                 f"🔢 *تنبيه رقم:* `#{ticker_counters[ticker]}`\n" \
+                                 f"🔢 *تنبيه رقم لهذا السهم:* `#{ticker_counters[ticker]}`\n" \
                                  f"💰 *السعر اللحظي:* `${entry_price:.2f}`\n" \
-                                 f"📊 *انفجار الفوليوم (Volume):* `{int(curr_volume):,}`\n" \
+                                 f"📊 *انفجار الفوليوم:* `{int(curr_volume):,}`\n" \
                                  f"----------------------------------\n" \
                                  f"📥 *نقطة الدخول:* `${entry_price:.2f}`\n" \
                                  f"⛔ *وقف الخسارة:* `${entry_price*0.96:.2f}`\n" \
                                  f"💎 *الأهداف:* T1:`{entry_price*1.04:.2f}` | T2:`{entry_price*1.07:.2f}`\n" \
                                  f"----------------------------------\n" \
-                                 f"🚀 *الحالة:* هذا السهم يملك سيولة انفجارية لحظية الآن!"
+                                 f"🚀 *الحالة:* سيولة انفجارية لحظية مكتشفة الآن!"
                                  
                     send_msg(alert_text)
                     time.sleep(2)
@@ -67,5 +71,5 @@ def scan_momentum_market_v33():
         logging.error(f"خطأ في مسح الزخم: {e}")
 
 while True:
-    scan_momentum_market_v33()
-    time.sleep(60) # فحص كل دقيقة لصيد الزخم اللحظي
+    scan_momentum_market_v34()
+    time.sleep(60)
