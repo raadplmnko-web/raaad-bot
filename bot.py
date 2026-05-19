@@ -1,180 +1,65 @@
+import os
 import time
 import requests
 import logging
-from datetime import datetime
-import pytz
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 TELEGRAM_TOKEN = "8809048554:AAHFEB7U68hSPydldzQZ5a2TQ205plJ3JKA"
 CHAT_ID = "687056332"
-FINNHUB_KEY = "d6fnilhr01qqnmbpbjc0d6fnilhr01qqnmbpbjcg"
-NY_TZ = pytz.timezone("America/New_York")
-sent_cache = {}
-
-# قائمة أسهم Penny Stocks الأكثر تداولاً وشهرة
-WATCHLIST = [
-    "SOUN","PLUG","CLSK","NKLA","IDEX","ILUS","CENN","MULN","FFIE","ZCAR",
-    "ATER","BBIG","WKHS","GOEV","XELA","MMAT","TLRY","SNDL","ACB","CGC",
-    "CTRM","SHIP","GFAI","MYSZ","DPRO","NAKD","EXPR","AMC","KOSS","BGFV",
-    "ABML","ANVS","AREB","ATEK","ATNF","AVCT","AYTU","BFRI","BSFC","BTBT",
-    "CABA","CALT","CBAN","CBAT","CDIO","CELZ","CFRX","CLNN","CLRO","CLVS",
-    "CNTX","CODX","COEP","COMS","CPSH","CREX","CRIS","CRTX","CRVS","CTXR",
-    "DARE","DBVT","DCFC","DFFN","DLPN","DMAC","DNGR","DPSI","DRRX","DTSS",
-    "EARS","EBIX","EDSA","ELOX","EMED","ENVB","ENZC","EPIX","EVOK","EVVL",
-    "FBIO","FCEL","FFBW","FGEN","FKWL","FLNT","FNCH","FNWB","FPAY","FRZA",
-    "GBOX","GCEH","GEVO","GFAI","GIGA","GLBS","GLEO","GLMD","GLSI","GMBL",
-    "HALO","HCDI","HCTI","HEPA","HIHO","HLBZ","HLIT","HMBL","HPCO","HPNN",
-    "HYMC","HYSR","IKNX","IMAQ","IMCC","IMMP","IMNN","IMPP","IMRX","INDO",
-    "INPX","INVU","IONM","ITRM","IXHL","JAGX","JANX","JFIN","JNVR","KAVL",
-    "KBNT","KCGI","KERN","KGEI","KPLT","KRRO","KSCP","LBPS","LCFY","LCTX",
-    "LGVN","LIQT","LKCO","LMNL","LNTH","LPCN","LPEN","LPSN","LQDA","LRMR",
-    "MBRX","MCVT","MDAI","MDJH","MDVX","MEIP","METX","MFON","MGAM","MGTX",
-    "MIME","MINM","MKUL","MLEN","MLNK","MLTX","MOFG","MOXC","MPAA","MPVD",
-    "MYSZ","NAKD","NBEV","NCPL","NDRA","NEPT","NFYS","NGMS","NHWK","NKGN",
-    "NKLA","NLSP","NNAX","NNVC","NOVN","NRSN","NRXP","NSGN","NURO","NVFY",
-    "OCGN","OGEN","OLMIX","ONCS","ONVO","OPFI","OPRT","ORGO","ORON","OSST",
-    "PAVM","PBAX","PBTS","PCSA","PDEX","PFIE","PGSS","PHGE","PHIO","PHVS",
-    "PIXY","PKBO","PLRX","PNTM","POAI","POCI","PRFX","PRLD","PRVB","PRZO",
-    "PSTV","PTIX","PULM","PVBC","PVNC","PWFL","QNRX","RCAT","RDHL","RDVT",
-    "RLMD","RMBL","RMED","RNER","RNVA","RONI","RPTX","RSLS","RTLX","RVMD",
-    "RZLT","SBEV","SBET","SBFM","SBIG","SBOW","SCAP","SCLX","SEEL","SEII",
-    "SELB","SFIO","SGBX","SGMO","SHFS","SHIP","SIDU","SIEB","SINT","SKYE",
-    "SLNA","SLNO","SMIT","SNAX","SNPX","SOBR","SOPA","SOWG","SPCB","SPGX",
-    "SPKL","SPRC","SPRB","SPRO","SPRQ","SPTY","SQFT","SREA","SRTS","SRZN",
-    "SSSS","STAF","STCN","STGW","STPC","STPK","STRM","STSS","STXS","SUGP",
-    "SUNW","SURF","SVNA","SWAG","SWAV","SWKH","SYRS","SYTA","TALS","TBLT",
-    "TCBP","TCON","TCRT","TDAC","TEAT","TFFP","TGLO","THTX","TIRX","TLGA",
-    "TLRY","TMDI","TMBR","TMPO","TNXP","TPVG","TRCA","TRNX","TROO","TROV",
-    "TRVI","TRXA","TTCF","TTOO","TTSH","TTNP","TTSH","TUNL","TVTX","TXMD",
-    "UAVS","UBXG","UCBI","UCON","UFLX","UGRO","ULBI","ULBR","UMAC","UNFI",
-    "URGN","USDP","USEG","USEI","USIO","USWS","UTME","UUUU","VALN","VBIV",
-    "VCNX","VEON","VERB","VERO","VHAI","VICP","VISL","VITO","VJGG","VLGEA",
-    "VNET","VNRX","VNTR","VOGI","VONE","VORB","VPCO","VRAY","VRDN","VRME",
-    "VTAK","VTAQ","VTGN","VTSI","VUZI","VVPR","WAFU","WATT","WAVE","WCLD",
-    "WEJO","WETG","WFCF","WHLR","WINT","WISA","WKHS","WLTW","WMPN","WNFT",
-    "WNNR","WORX","WPRT","WRTC","WTBA","WTRH","WULF","XBIO","XBIT","XCUR",
-    "XELA","XELB","XENE","XFOR","XOMA","XPON","XTIA","XTLB","XWEL","YCBD",
-    "YELL","YGTY","YKFS","YMTX","YPIX","YTEN","YVRLF","ZCAR","ZEST","ZFOX",
-    "ZIVO","ZJYL","ZKIN","ZNTH","ZSAN","ZTHO","ZVRA","ZWRK","ZYXI"
-]
-
-def is_market_time():
-    now = datetime.now(NY_TZ)
-    if now.weekday() >= 5:
-        return False
-    t = now.hour * 60 + now.minute
-    return (4 * 60) <= t < (16 * 60)
 
 def send_msg(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        res = requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}, timeout=10)
-        logging.info(f"تلجرام: {res.status_code}")
+        res = requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"})
+        logging.info(f"استجابة التلجرام: {res.json()}")
     except Exception as e:
-        logging.error(f"خطأ تلجرام: {e}")
+        logging.error(f"خطأ إرسال تلجرام: {e}")
 
-def check_signal(symbol):
-    url = "https://finnhub.io/api/v1/quote"
-    params = {"symbol": symbol, "token": FINNHUB_KEY}
-    try:
-        res = requests.get(url, params=params, timeout=5)
-        d = res.json()
-    except:
-        return None
-
-    price  = d.get("c", 0)
-    open_  = d.get("o", 0)
-    high   = d.get("h", 0)
-    low    = d.get("l", 0)
-    prev   = d.get("pc", 0)
-    volume = d.get("v", 0)
-
-    if not price or not prev or prev == 0:
-        return None
-    if not (0.50 <= price <= 10.00):
-        return None
-    if price <= open_:
-        return None
-
-    roc          = ((price - prev) / prev) * 100
-    candle_range = high - low if high > low else 0.001
-    bull_pct     = max(0, (price - open_) / candle_range * 100)
-    rsi          = max(0, min(100, 50 + roc * 3))
-    adx          = min(100, abs(roc) * 5)
-    is_high_vol  = volume > 200_000
-    is_mega_vol  = volume > 800_000
-
-    is_blast = is_mega_vol and roc > 2.0 and bull_pct > 50 and adx > 20
-    is_call  = bull_pct > 55 and rsi > 52 and roc > 1.5 and is_high_vol
-    is_early = roc > 1.0 and is_high_vol and bull_pct > 40
-
-    if not (is_blast or is_call or is_early):
-        return None
-
-    atr       = candle_range
-    target1   = round(price + atr * 1.0, 3)
-    target2   = round(price + atr * 2.0, 3)
-    target_g  = round(price + atr * 3.5, 3)
-    stop_loss = round(low - atr * 0.3, 3)
-
-    label = "💥 انفجار زخم" if is_blast else "🟢 CALL زخم" if is_call else "⚡ بداية زخم"
-
-    return {
-        "symbol": symbol, "price": price,
-        "roc": round(roc, 2), "volume": volume,
-        "bull_pct": round(bull_pct, 1),
-        "target1": target1, "target2": target2,
-        "target_g": target_g, "stop_loss": stop_loss,
-        "label": label,
+def get_penny_stocks_under_10():
+    # إضافة أمر تفصيلي للياهو بجلب أسعار ما بعد وما قبل السوق الحية فوراً
+    url = "https://query1.finance.yahoo.com/v1/finance/scrumb/screener/tokens/day_gainers?includePrePost=true"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
     }
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            quotes = data.get('finance', {}).get('result', [{}])[0].get('quotes', [])
+            
+            scanned_count = 0
+            for stock in quotes:
+                ticker = stock.get('symbol', '').upper()
+                
+                # قراءة سعر فترة ما بعد/قبل السوق إذا كان السوق مغلقاً، وإلا يقرأ السعر الرسمي
+                price = stock.get('postMarketPrice') or stock.get('preMarketPrice') or stock.get('regularMarketPrice')
+                change_percent = stock.get('postMarketChangePercent') or stock.get('preMarketChangePercent') or stock.get('regularMarketChangePercent')
+                volume = stock.get('regularMarketVolume', 0)
+                
+                if not ticker or price is None or change_percent is None:
+                    continue
+                
+                # الفلترة الملكية الصارمة: أقل من 10 دولار
+                if 0.50 <= price <= 10.00 and change_percent > 1.0 and volume > 100000:
+                    scanned_count += 1
+                    alert_text = f"⚡ *رادار رعد: قنص فترات السوق الممتدة* ⚡\n\n" \
+                                 f"🔹 *السهم المكتشف:* `{ticker}`\n" \
+                                 f"🟢 **السعر اللحظي (خارج السوق):** `${price:.2f}`\n" \
+                                 f"📈 **نسبة التغير اللحظية:** `+{change_percent:.2f}%`\n" \
+                                 f"📊 **حجم التداول العام:** `{volume:,}`\n" \
+                                 f"----------------------------------\n" \
+                                 f"🎯 *الحالة:* رصد حركة سيولة نشطة خارج أوقات الماركت الرسمية!"
+                    send_msg(alert_text)
+                    time.sleep(1)
+            logging.info(f"🔄 تم فحص أسهم الزخم الممتد بنجاح واكتشاف {scanned_count} أسهم.")
+    except Exception as e:
+        logging.error(f"خطأ أثناء جلب البيانات: {e}")
 
-def scan():
-    found = 0
-    for i, symbol in enumerate(WATCHLIST):
-        last = sent_cache.get(symbol, 0)
-        if time.time() - last < 1800:
-            continue
+logging.info("🚀 تشغيل رادار رعد للفلترة الشاملة (رسمي + ممتد)...")
 
-        result = check_signal(symbol)
-        if result:
-            found += 1
-            sent_cache[symbol] = time.time()
-            msg = (
-                f"{result['label']}\n"
-                f"━━━━━━━━━━━━━━━━\n"
-                f"📌 *السهم:* `{result['symbol']}`\n"
-                f"💵 *السعر:* `${result['price']:.3f}`\n"
-                f"⚡ *ROC:* `{result['roc']}%`\n"
-                f"📊 *زخم الشمعة:* `{result['bull_pct']}%`\n"
-                f"📦 *الفوليوم:* `{result['volume']:,}`\n"
-                f"━━━━━━━━━━━━━━━━\n"
-                f"🎯 *هدف 1:* `${result['target1']}`\n"
-                f"🎯 *هدف 2:* `${result['target2']}`\n"
-                f"🏆 *الهدف الذهبي:* `${result['target_g']}`\n"
-                f"🛑 *وقف الخسارة:* `${result['stop_loss']}`\n"
-                f"━━━━━━━━━━━━━━━━\n"
-                f"🚀 *رادار رعد V6*"
-            )
-            send_msg(msg)
-            time.sleep(1)
-
-        if i % 55 == 0 and i > 0:
-            time.sleep(61)
-
-    logging.info(f"✅ انتهى الفحص - {found} إشارة")
-
-# ── تشغيل ──
-logging.info("🚀 رادار رعد V6 يعمل...")
-send_msg(f"🔥 *رادار رعد V6* 🔥\n\nيراقب {len(WATCHLIST)} سهم Penny Stock معروف!")
+send_msg("🔥 *تم تحديث الرادار لدعم فترات Pre-Market و After-Hours!* 🔥\n\nالرادار الآن يراقب أي حركة فجائية من الساعة 11:00 صباحاً وحتى 3:00 الفجر للأسهم الأقل من 10$.")
 
 while True:
-    if not is_market_time():
-        now = datetime.now(NY_TZ)
-        logging.info(f"⏸️ خارج وقت السوق - {now.strftime('%H:%M')} نيويورك")
-        time.sleep(300)
-        continue
-
-    scan()
-    logging.info("⏰ انتظار 3 دقائق...")
+    get_penny_stocks_under_10()
     time.sleep(180)
