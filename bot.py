@@ -39,13 +39,21 @@ def scan_us_market_yfinance():
                 stock_history = tickers_data[ticker]
                 if stock_history.empty:
                     continue
-                    
+                
+                # جلب بيانات السهم الإجمالية الإضافية لضمان دقة حجم التداول اليومي الكلي
+                ticker_obj = yf.Ticker(ticker)
+                fast_info = ticker_obj.fast_info
+                
                 # جلب الأسعار اللحظية وبيانات اليوم الحالية
                 price = float(stock_history['Close'].iloc[-1])
                 day_high = float(stock_history['High'].max())
                 day_low = float(stock_history['Low'].min())
                 open_price = float(stock_history['Open'].iloc[0]) if len(stock_history) > 0 else price
-                volume = int(stock_history['Volume'].iloc[-1]) if 'Volume' in stock_history.columns else 150000
+                
+                # السر هنا: سحب الفوليوم التراكمي لليوم بدقة من fast_info
+                volume = int(fast_info.get('last_volume', 150000))
+                if volume <= 0 or volume == 150000:
+                    volume = int(fast_info.get('volume', 150000))
                 
                 # حساب نسبة التغير اللحظية بدقة
                 change_percent = ((price - open_price) / open_price) * 100
@@ -76,7 +84,7 @@ def scan_us_market_yfinance():
                                  f"🔹 *السهم المكتشف:* `{ticker}`\n" \
                                  f"🟢 **السعر اللحظي الحقيقي الحين:** `${entry_price:.2f}`\n" \
                                  f"📈 **نسبة الارتفاع الفوري:** `+{change_percent:.2f}%`\n" \
-                                 f"📊 **حجم التداول (Volume):** `{volume:,}`\n" \
+                                 f"📊 **حجم التداول الكلي (Volume):** `{volume:,}`\n" \
                                  f"----------------------------------\n" \
                                  f"🎯 *أرقام الصفقات المستخرجة من مؤشراتك بالملي:* \n\n" \
                                  f"📥 **نقطة الدخول المفضلة:** `${entry_price:.2f}`\n" \
@@ -85,7 +93,7 @@ def scan_us_market_yfinance():
                                  f"💎 **الهدف الثاني (T2):** `${target_2:.2f}`\n" \
                                  f"👑 **الهدف الذهبي (TG):** `${target_g:.2f}`\n" \
                                  f"----------------------------------\n" \
-                                 f"🎯 *الحالة:* اتصال رسمي آمن ومستقر 100% ومقاوم للحظر!"
+                                 f"🎯 *الحالة:* اتصال رسمي مستقر 100% | جلب دقيق لحجم التداول 🔥"
                                  
                     send_msg(alert_text)
                     time.sleep(2)
@@ -95,8 +103,6 @@ def scan_us_market_yfinance():
         logging.info(f"🔄 تم إنهاء الفحص بنجاح واكتشاف {scanned_count} فرص مطابقة للزخم.")
     except Exception as e:
         logging.error(f"خطأ أثناء معالجة ياهو بالمكتبة الرسمية: {e}")
-
-send_msg("🛡️ *تم تفعيل الرادار بالاتصال الرسمي عبر yfinance بنجاح!* 🛡️\n\n- تخطي كامل وجذري لقيود الحظر والـ 429 للأبد.\n- الأسعار حية ومحدثة مع حساب الأهداف والوقف بدقة مؤشراتك الفنية 📊")
 
 while True:
     scan_us_market_yfinance()
