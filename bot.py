@@ -1,44 +1,64 @@
 import logging
+import os
 import yfinance as yf
+import pandas as pd
 from telegram.ext import ApplicationBuilder, MessageHandler, filters
 
 logging.basicConfig(level=logging.INFO)
-TOKEN = "8809048554:AAEidzYK2Ktvd1xDAdnEoAAb1WnfWQeHn1w"
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
+if not TOKEN: TOKEN = "8809048554:AAEidzYK2Ktvd1xDAdnEoAAb1WnfWQeHn1w"
 
-def analyze_raad_v53_stable(ticker):
+def calculate_mfi(df, period=14):
+    typical = (df['High'] + df['Low'] + df['Close']) / 3
+    flow = typical * df['Volume']
+    pos = flow.where(typical > typical.shift(1), 0).rolling(period).sum()
+    neg = flow.where(typical < typical.shift(1), 0).rolling(period).sum()
+    return (100 - (100 / (1 + pos / neg))).iloc[-1]
+
+def analyze_raad_v26(ticker):
     try:
         ticker = ticker.upper().strip()
-        # نطلب بيانات 5 أيام على فريم 5 دقائق لضمان توفر البيانات دائماً
         df = yf.Ticker(ticker).history(period="5d", interval="5m")
+        if df.empty: return "❌ لم أجد بيانات لحظية."
         
-        if df.empty or len(df) < 2: 
-            return f"⚠️ {ticker}: جاري تحديث البيانات، حاول مجدداً بعد لحظات."
+        close = float(df['Close'].iloc[-1])
+        volume = float(df['Volume'].iloc[-1])
+        avg_vol = float(df['Volume'].rolling(window=20).mean().iloc[-1])
+        atr = float((df['High'] - df['Low']).rolling(window=14).mean().iloc[-1])
+        mfi = calculate_mfi(df)
         
-        current = float(df['Close'].iloc[-1])
-        prev = float(df['Close'].iloc[-2])
-        momentum = ((current - prev) / prev) * 100
+        is_high_volume = volume > avg_vol
         
-        # أهداف ووقف مضاربي
-        tp = current * 1.008
-        sl = current * 0.995
+        # الأهداف ووقف الخسارة
+        target1 = close + (atr * 0.5)
+        targetG = close + (atr * 1.0)
+        stopLoss = close - (atr * 0.8)
         
-        # رسالة مباشرة بدون فلاتر تمنعك
-        status = "🔥 صعود" if momentum > 0 else "📉 هبوط"
-        
-        return (f"📊 رادار رعد (5 دقائق): {ticker}\n"
-                f"💰 السعر: {current:.2f}\n"
-                f"⚡ الزخم: {momentum:.2f}%\n"
-                f"🎯 هدف: {tp:.2f}\n"
-                f"🛑 وقف: {sl:.2f}\n"
-                f"⚙️ الحالة: {status}")
-                
+        # منطق القرار
+        if mfi > 70 and is_high_volume:
+            decision = "🔥 مغامرة (زخم عالي)"
+        elif mfi < 30:
+            decision = "⚓ ارتداد (فرصة شراء)"
+        else:
+            decision = "⚡ دخول (سيولة متوازنة)"
+            
+        return (f"⚡ رادار رعد (قناص الزخم) - {ticker}\n"
+                f"--------------------------\n"
+                f"💰 السعر: {close:.2f}\n"
+                f"📊 السيولة (MFI): {mfi:.1f}\n"
+                f"📈 الحجم: {'عالي' if is_high_volume else 'منخفض'}\n"
+                f"🎯 قرار الرادار: {decision}\n"
+                f"📈 هدف 1: {target1:.2f}\n"
+                f"🏆 الهدف الذهبي: {targetG:.2f}\n"
+                f"🛑 وقف الخسارة: {stopLoss:.2f}\n"
+                f"--------------------------")
     except Exception as e:
-        return f"❌ خطأ تقني، تأكد من كتابة الرمز صحيحاً."
+        return f"خطأ: {str(e)[:30]}"
 
 async def handle_message(update, context):
-    await update.message.reply_text(analyze_raad_v53_stable(update.message.text))
+    await update.message.reply_text(analyze_raad_v26(update.message.text))
 
-if __name__ == '__main__':
+if name == 'main':
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     app.run_polling()
