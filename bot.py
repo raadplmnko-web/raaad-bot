@@ -1,59 +1,36 @@
 import logging
 import yfinance as yf
-import pandas_ta as ta
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+import pandas as pd
+from telegram.ext import ApplicationBuilder, MessageHandler, filters
 
-# إعداد السجل
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# ضع التوكن الخاص بك هنا
-TELEGRAM_TOKEN = "8809048554:AAHFEB7U68hSPydldzQZ5a2TQ205plJ3JKA"
+logging.basicConfig(level=logging.INFO)
+TOKEN = "8809048554:AAHFEB7U68hSPydldzQZ5a2TQ205plJ3JKA"
 
 def analyze_raad_v26(ticker):
     try:
-        # جلب البيانات
+        # تحميل البيانات
         df = yf.download(ticker, period="1mo", interval="1d", progress=False)
         if df.empty: return None
         
+        # حساب المؤشرات يدوياً (بدون pandas_ta)
         close = float(df['Close'].iloc[-1])
-        # حساب المؤشرات
-        atr = float(ta.atr(df['High'], df['Low'], df['Close'], length=14).iloc[-1])
-        mfi = float(ta.mfi(df['High'], df['Low'], df['Close'], df['Volume'], length=7).iloc[-1])
-        resVal = float(df['High'].rolling(30).max().iloc[-2])
+        # متوسط متحرك بسيط (بديلاً عن المؤشرات المعقدة)
+        sma30 = df['Close'].rolling(window=30).mean().iloc[-1]
+        resVal = df['High'].rolling(window=30).max().iloc[-1]
         
-        is_breakout = close >= resVal
-        decision = "🔥 مغامرة (اختراق)" if is_breakout else "⚓ انتظار (ارتداد)"
+        # منطق التحليل
+        decision = "🔥 اختراق إيجابي" if close >= resVal else "⚓ منطقة انتظار"
         
-        return {
-            "decision": decision,
-            "entry": close,
-            "t1": close + (atr * 1.2),
-            "tg": close + (atr * 3.0),
-            "sl": close - (atr * 0.4),
-            "mfi": mfi
-        }
+        return f"⚡ تحليل {ticker}\nالقرار: {decision}\n💰 السعر الحالي: {close:.2f}\n📈 المقاومة: {resVal:.2f}\n📊 متوسط 30 يوم: {sma30:.2f}"
     except Exception as e:
-        logging.error(f"Error analyzing {ticker}: {e}")
-        return None
+        return f"خطأ في التحليل: {e}"
 
-async def silent_analyzer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update, context):
     ticker = update.message.text.upper().strip()
-    data = analyze_raad_v26(ticker)
-    
-    if data:
-        msg = f"⚡ *تحليل رادار رعد لـ {ticker}*\n\n" \
-              f"القرار: {data['decision']}\n" \
-              f"💰 الدخول: `{data['entry']:.2f}`\n" \
-              f"💰 هدف 1: `{data['t1']:.2f}`\n" \
-              f"👑 هدف ذهبي: `{data['tg']:.2f}`\n" \
-              f"⛔ وقف خسارة: `{data['sl']:.2f}`\n" \
-              f"📊 سيولة MFI: `{data['mfi']:.1f}%`"
-        await update.message.reply_text(msg, parse_mode='Markdown')
-    else:
-        await update.message.reply_text("❌ لم أتمكن من تحليل هذا السهم، تأكد من الرمز.")
+    result = analyze_raad_v26(ticker)
+    await update.message.reply_text(result)
 
 if __name__ == '__main__':
-    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), silent_analyzer))
-    application.run_polling()
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    app.run_polling()
