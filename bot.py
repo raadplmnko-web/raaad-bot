@@ -1,20 +1,22 @@
 import logging
+import os
 import yfinance as yf
-import pandas as pd
 from telegram.ext import ApplicationBuilder, MessageHandler, filters
 
+# إعداد السجلات
 logging.basicConfig(level=logging.INFO)
-TOKEN = "8809048554:AAHFEB7U68hSPydldzQZ5a2TQ205plJ3JKA"
+
+# قراءة التوكن من متغيرات النظام (Environment Variables) في Railway
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 def analyze_raad_v26(ticker):
     try:
         # تحميل البيانات
         df = yf.download(ticker, period="1mo", interval="1d", progress=False)
-        if df.empty: return None
+        if df.empty: return "لم يتم العثور على بيانات لهذا الرمز."
         
-        # حساب المؤشرات يدوياً (بدون pandas_ta)
+        # حساب المؤشرات
         close = float(df['Close'].iloc[-1])
-        # متوسط متحرك بسيط (بديلاً عن المؤشرات المعقدة)
         sma30 = df['Close'].rolling(window=30).mean().iloc[-1]
         resVal = df['High'].rolling(window=30).max().iloc[-1]
         
@@ -31,6 +33,12 @@ async def handle_message(update, context):
     await update.message.reply_text(result)
 
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    app.run_polling()
+    # التحقق من وجود التوكن قبل البدء
+    if not TOKEN:
+        logging.error("لم يتم العثور على TELEGRAM_TOKEN في متغيرات النظام!")
+    else:
+        app = ApplicationBuilder().token(TOKEN).build()
+        app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+        
+        logging.info("البوت يعمل الآن...")
+        app.run_polling()
