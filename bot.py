@@ -15,52 +15,50 @@ def calculate_mfi(df, period=14):
     neg = flow.where(typical < typical.shift(1), 0).rolling(period).sum()
     return (100 - (100 / (1 + pos / neg))).iloc[-1]
 
-def calculate_macd(df):
-    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    macd = exp1 - exp2
-    signal = macd.ewm(span=9, adjust=False).mean()
-    return macd.iloc[-1] > signal.iloc[-1]
-
 def analyze_raad_v26(ticker):
     try:
         ticker = ticker.upper().strip()
-        df = yf.Ticker(ticker).history(period="3mo")
-        if df.empty: return "❌ لم أجد بيانات."
+        # فريم 5 دقائق للمضاربة السريعة
+        df = yf.Ticker(ticker).history(period="5d", interval="5m")
+        if df.empty: return "❌ لم أجد بيانات لحظية."
         
         close = float(df['Close'].iloc[-1])
-        resVal = float(df['High'].rolling(window=30).max().iloc[-1])
+        volume = float(df['Volume'].iloc[-1])
+        avg_vol = float(df['Volume'].rolling(window=20).mean().iloc[-1])
         atr = float((df['High'] - df['Low']).rolling(window=14).mean().iloc[-1])
-        
         mfi = calculate_mfi(df)
-        is_macd_bullish = calculate_macd(df)
         
-        # الأهداف ووقف الخسارة
-        target1 = close + (atr * 1.2)
-        targetG = close + (atr * 3.0)  # هذا هو الهدف الذهبي
-        stopLoss = close - (atr * 1.5)
+        # شرط الزخم: السعر فوق متوسط 20 + الحجم أكبر من متوسط 20
+        sma20 = df['Close'].rolling(window=20).mean().iloc[-1]
+        is_high_volume = volume > avg_vol
         
-        # --- منطق القرار ---
-        if close >= resVal and is_macd_bullish:
-            decision = "⚡ دخول مؤكد (اختراق + زخم)"
-        elif mfi > 65 and is_macd_bullish:
-            decision = "🔥 مغامرة (زخم عالي)"
+        # الأهداف
+        target1 = close + (atr * 0.5)
+        targetG = close + (atr * 1.0)
+        stopLoss = close - (atr * 0.8)
+        
+        # منطق القرار مع فلتر الحجم
+        if close > sma20 and is_high_volume and mfi > 50:
+            decision = "⚡ دخول مؤكد (سيولة عالية)"
+        elif mfi > 70 and is_high_volume:
+            decision = "🔥 مغامرة (زخم قوي)"
         elif mfi < 30:
             decision = "⚓ ارتداد (فرصة شراء)"
         else:
-            decision = "⚖️ انتظار (سيولة متوازنة)"
+            decision = "⚖️ انتظار (سيولة ضعيفة)"
             
-        return (f"⚡ رادار رعد الأسطوري V26 - {ticker}\n"
+        return (f"⚡ رادار رعد (قناص الزخم) - {ticker}\n"
                 f"--------------------------\n"
                 f"💰 السعر: {close:.2f}\n"
-                f"📊 MFI: {mfi:.1f} | MACD: {'إيجابي' if is_macd_bullish else 'سلبي'}\n"
+                f"📊 السيولة (MFI): {mfi:.1f}\n"
+                f"📈 الحجم: {'عالي' if is_high_volume else 'منخفض'}\n"
                 f"🎯 قرار الرادار: {decision}\n"
                 f"📈 هدف 1: {target1:.2f}\n"
                 f"🏆 الهدف الذهبي: {targetG:.2f}\n"
                 f"🛑 وقف الخسارة: {stopLoss:.2f}\n"
                 f"--------------------------")
     except Exception as e:
-        return f"خطأ: {str(e)[:30]}"
+        return f"خطأ في التحليل: {str(e)[:30]}"
 
 async def handle_message(update, context):
     await update.message.reply_text(analyze_raad_v26(update.message.text))
