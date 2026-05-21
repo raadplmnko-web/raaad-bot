@@ -20,7 +20,7 @@ def calculate_macd(df):
     exp2 = df['Close'].ewm(span=26, adjust=False).mean()
     macd = exp1 - exp2
     signal = macd.ewm(span=9, adjust=False).mean()
-    return macd.iloc[-1] > signal.iloc[-1] # إشارة إيجابية أم لا
+    return macd.iloc[-1] > signal.iloc[-1]
 
 def analyze_raad_v26(ticker):
     try:
@@ -35,7 +35,12 @@ def analyze_raad_v26(ticker):
         mfi = calculate_mfi(df)
         is_macd_bullish = calculate_macd(df)
         
-        # --- منطق القرار الأسطوري (دمج MFI و MACD) ---
+        # الأهداف ووقف الخسارة
+        target1 = close + (atr * 1.2)
+        targetG = close + (atr * 3.0)  # هذا هو الهدف الذهبي
+        stopLoss = close - (atr * 1.5)
+        
+        # --- منطق القرار ---
         if close >= resVal and is_macd_bullish:
             decision = "⚡ دخول مؤكد (اختراق + زخم)"
         elif mfi > 65 and is_macd_bullish:
@@ -50,8 +55,9 @@ def analyze_raad_v26(ticker):
                 f"💰 السعر: {close:.2f}\n"
                 f"📊 MFI: {mfi:.1f} | MACD: {'إيجابي' if is_macd_bullish else 'سلبي'}\n"
                 f"🎯 قرار الرادار: {decision}\n"
-                f"📈 هدف 1: {close + (atr*1.2):.2f}\n"
-                f"🛑 وقف الخسارة: {close - (atr*1.5):.2f}\n"
+                f"📈 هدف 1: {target1:.2f}\n"
+                f"🏆 الهدف الذهبي: {targetG:.2f}\n"
+                f"🛑 وقف الخسارة: {stopLoss:.2f}\n"
                 f"--------------------------")
     except Exception as e:
         return f"خطأ: {str(e)[:30]}"
