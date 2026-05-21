@@ -18,61 +18,60 @@ def calculate_atr(df, period=14):
     tr = pd.concat([df['High']-df['Low'], abs(df['High']-df['Close'].shift()), abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
     return float(tr.rolling(period, min_periods=1).mean().iloc[-1])
 
-def analyze_raad_v42(ticker):
+def analyze_raad_v48(ticker):
     try:
         ticker = ticker.upper().strip()
         df = yf.Ticker(ticker).history(period="5d", interval="5m")
-        if df.empty or len(df) < 4: return "⚠️ السهم قليل البيانات."
+        if len(df) < 12: return "⚠️ سهم جديد / بيانات غير كافية."
         
         close = float(df['Close'].iloc[-1])
         vol = float(df['Volume'].iloc[-1])
         avg_vol = float(df['Volume'].rolling(20, min_periods=1).mean().iloc[-1])
         
-        if avg_vol < 30000: return f"❌ {ticker}: سيولة ضعيفة جداً"
+        # تخفيف شرط السيولة للأسهم الطايرة
+        if avg_vol < 15000: return f"❌ {ticker}: سيولة ميتة"
         
-        prev_close_3 = float(df['Close'].shift(3).iloc[-1])
-        momentum3 = ((close - prev_close_3) / prev_close_3) * 100
+        momentum3 = ((close - float(df['Close'].iloc[-4])) / float(df['Close'].iloc[-4])) * 100
+        momentum6 = ((close - float(df['Close'].iloc[-7])) / float(df['Close'].iloc[-7])) * 100
         
-        if momentum3 < -1: return f"⚠️ {ticker}: خروج فوري (ضعف قوي)"
+        # تخفيف شرط الخروج للأسهم الطايرة
+        if momentum3 < -3.0: return f"⚠️ {ticker}: خروج طارئ (انهيار الزخم)"
         
         mfi = calculate_mfi(df)
         atr = calculate_atr(df)
-        speed = abs(momentum3)
         
-        # نظام النقاط والدخول
-        strength = 0
-        if vol > avg_vol * 3: strength += 2
-        elif vol > avg_vol * 1.5: strength += 1
-        if momentum3 > 1: strength += 2
-        elif momentum3 > 0.5: strength += 1
-        if 50 < mfi < 65: strength += 1
-        elif mfi > 70: strength += 2
+        entry_score = 0
         
-        entry_score = strength
-        if momentum3 > 2: entry_score += 2
-        if speed > 1: entry_score += 1
+        # نقاط الصواريخ
+        if momentum3 > 2.0: entry_score += 2 # زخم قوي جداً
+        if vol > avg_vol * 2.0: entry_score += 2 # سيولة عالية
+        if mfi > 60: entry_score += 1
         
-        # فلتر الدخول (إضافتك الصارمة)
-        if entry_score < 4:
-            return f"❌ {ticker}: لا توجد فرصة سكالب حالياً (النقاط: {entry_score})"
+        # منطق "السهم الطاير"
+        is_rocket = momentum3 > 3.0 and vol > avg_vol * 1.5
+        if is_rocket:
+            decision = "🚀 سهم طاااااير! (ملاحقة)"
+            entry_score += 3
+        else:
+            decision = "⚡ دخول سكالب" if entry_score >= 4 else "👀 مراقبة"
+
+        if entry_score < 3 and not is_rocket:
+            return f"👀 {ticker}: ضعيف (نقاط: {entry_score})"
             
-        # منطق الهدف والوقف الديناميكي
-        if entry_score >= 6:
-            decision, tp, sl = "🚀 دخول انفجار", close + (atr * 1.0), close - (atr * 0.5)
-        else: # من 4 إلى 5
-            decision, tp, sl = "⚡ دخول سكالب", close + (atr * 0.8), close - (atr * 0.6)
+        tp = close + (atr * 1.2) # هدف أوسع للأسهم الطايرة
+        sl = close - (atr * 0.7)
             
-        return (f"⚡ رادار رعد V42\n"
+        return (f"⚡ رادار رعد V48 (وضع الصواريخ)\n"
                 f"🏷️ السهم: {ticker}\n"
-                f"📊 النتيجة: {entry_score}\n"
-                f"🎯 القرار: {decision}\n"
+                f"🔥 الحالة: {decision}\n"
+                f"📊 قوة الزخم: {momentum3:.2f}%\n"
                 f"🎯 هدف: {tp:.2f} | 🛑 وقف: {sl:.2f}")
                 
     except Exception as e:
         return f"❌ خطأ: {str(e)[:30]}"
 
 async def handle_message(update, context):
-    await update.message.reply_text(analyze_raad_v42(update.message.text))
+    await update.message.reply_text(analyze_raad_v48(update.message.text))
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
