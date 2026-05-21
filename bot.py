@@ -9,11 +9,11 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters
 # =========================================================
 logging.basicConfig(level=logging.INFO)
 
-# جلب التوكن من متغيرات البيئة (Railway) لضمان الأمان
-TOKEN = os.environ.get("TELEGRAM_TOKEN")
+# تم تثبيت التوكن هنا لضمان عمل البوت فوراً في Railway
+TOKEN = "8809048554:AAEidzYK2Ktvd1xDAdnEoAAb1WnfWQeHn1w"
 
 if not TOKEN:
-    raise ValueError("❌ يجب ضبط TELEGRAM_TOKEN في متغيرات البيئة في Railway")
+    raise ValueError("❌ خطأ: لم يتم العثور على التوكن")
 
 # =========================================================
 # حساب مؤشر السيولة MFI
