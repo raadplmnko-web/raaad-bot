@@ -6,6 +6,7 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters
 logging.basicConfig(level=logging.INFO)
 TOKEN = "8809048554:AAEidzYK2Ktvd1xDAdnEoAAb1WnfWQeHn1w"
 
+# الدوال الحسابية
 def calculate_mfi(df, period=14):
     typical = (df['High'] + df['Low'] + df['Close']) / 3
     flow = typical * df['Volume']
@@ -18,7 +19,7 @@ def calculate_atr(df, period=14):
     tr = pd.concat([df['High']-df['Low'], abs(df['High']-df['Close'].shift()), abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
     return float(tr.rolling(period, min_periods=1).mean().iloc[-1])
 
-def analyze_raad_v42(ticker):
+def analyze_raad_v40(ticker):
     try:
         ticker = ticker.upper().strip()
         df = yf.Ticker(ticker).history(period="5d", interval="5m")
@@ -28,18 +29,20 @@ def analyze_raad_v42(ticker):
         vol = float(df['Volume'].iloc[-1])
         avg_vol = float(df['Volume'].rolling(20, min_periods=1).mean().iloc[-1])
         
-        if avg_vol < 30000: return f"❌ {ticker}: سيولة ضعيفة جداً"
+        if avg_vol < 50000: return f"❌ {ticker}: سيولة ضعيفة"
         
         prev_close_3 = float(df['Close'].shift(3).iloc[-1])
         momentum3 = ((close - prev_close_3) / prev_close_3) * 100
         
-        if momentum3 < -1: return f"⚠️ {ticker}: خروج فوري (ضعف قوي)"
+        # فلتر السرعة (إضافتك)
+        speed = abs(momentum3)
+        if speed < 0.3: return f"❌ {ticker}: بطيء (غير صالح للسكالبينج)"
+        if momentum3 < 0: return f"⚠️ {ticker}: خروج فوري / ضعف زخم"
         
         mfi = calculate_mfi(df)
         atr = calculate_atr(df)
-        speed = abs(momentum3)
         
-        # نظام النقاط والدخول
+        # نظام النقاط
         strength = 0
         if vol > avg_vol * 3: strength += 2
         elif vol > avg_vol * 1.5: strength += 1
@@ -48,23 +51,20 @@ def analyze_raad_v42(ticker):
         if 50 < mfi < 65: strength += 1
         elif mfi > 70: strength += 2
         
-        entry_score = strength
-        if momentum3 > 2: entry_score += 2
-        if speed > 1: entry_score += 1
-        
-        # فلتر الدخول (إضافتك الصارمة)
-        if entry_score < 4:
-            return f"❌ {ticker}: لا توجد فرصة سكالب حالياً (النقاط: {entry_score})"
+        # منطق السكالبينج المدمج
+        if strength >= 4 and momentum3 > 1 and vol > avg_vol * 2:
+            decision = "🚀 دخول سكالب سريع"
+            tp, sl = close + (atr * 0.5), close - (atr * 0.4)
+        elif strength >= 3:
+            decision = "⚡ دخول محتمل"
+            tp, sl = close + (atr * 1.0), close - (atr * 1.0)
+        else:
+            decision = "⚠️ مراقبة"
+            tp, sl = close + (atr * 0.6), close - (atr * 1.2)
             
-        # منطق الهدف والوقف الديناميكي
-        if entry_score >= 6:
-            decision, tp, sl = "🚀 دخول انفجار", close + (atr * 1.0), close - (atr * 0.5)
-        else: # من 4 إلى 5
-            decision, tp, sl = "⚡ دخول سكالب", close + (atr * 0.8), close - (atr * 0.6)
-            
-        return (f"⚡ رادار رعد V42\n"
+        return (f"⚡ رادار رعد V40 (سكالبينج)\n"
                 f"🏷️ السهم: {ticker}\n"
-                f"📊 النتيجة: {entry_score}\n"
+                f"🚀 الزخم: {momentum3:.2f}%\n"
                 f"🎯 القرار: {decision}\n"
                 f"🎯 هدف: {tp:.2f} | 🛑 وقف: {sl:.2f}")
                 
@@ -72,7 +72,7 @@ def analyze_raad_v42(ticker):
         return f"❌ خطأ: {str(e)[:30]}"
 
 async def handle_message(update, context):
-    await update.message.reply_text(analyze_raad_v42(update.message.text))
+    await update.message.reply_text(analyze_raad_v40(update.message.text))
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
