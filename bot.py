@@ -23,24 +23,31 @@ def analyze_raad_v26(ticker):
         if df.empty: return f"❌ لم أجد بيانات لـ {ticker}."
         
         close = float(df['Close'].iloc[-1])
+        resVal = float(df['High'].rolling(window=30).max().iloc[-1])
         atr = float((df['High'] - df['Low']).rolling(window=14).mean().iloc[-1])
         mfi = calculate_mfi(df)
         
-        # الأهداف
+        # الأهداف ووقف الخسارة
         target1 = close + (atr * 1.2)
         targetG = close + (atr * 3.0)
         stopLoss = close - (atr * 1.5)
         
-        # حالة التشبع
-        if mfi > 80: status_mfi = "🚨 تشبع شرائي (خطر!)"
-        elif mfi < 20: status_mfi = "💎 تشبع بيعي (فرصة!)"
-        else: status_mfi = "⚖️ سيولة متوازنة"
-        
+        # --- منطق القرار الأسطوري ---
+        if close >= resVal and mfi > 50:
+            decision = "⚡ دخول (اختراق قوي)"
+        elif mfi > 65:
+            decision = "🔥 مغامرة (زخم عالي)"
+        elif mfi < 30:
+            decision = "⚓ ارتداد (فرصة شراء)"
+        else:
+            decision = "⚖️ انتظار (سيولة متوازنة)"
+            
         return (f"⚡ رادار رعد الأسطوري V26 - {ticker}\n"
                 f"--------------------------\n"
                 f"💰 السعر الحالي: {close:.2f}\n"
-                f"📊 مؤشر السيولة (MFI): {mfi:.1f} ({status_mfi})\n"
-                f"🎯 هدف 1: {target1:.2f}\n"
+                f"📊 مؤشر السيولة (MFI): {mfi:.1f}\n"
+                f"🎯 قرار الرادار: {decision}\n"
+                f"📈 هدف 1: {target1:.2f}\n"
                 f"🏆 الهدف الذهبي: {targetG:.2f}\n"
                 f"🛑 وقف الخسارة: {stopLoss:.2f}\n"
                 f"--------------------------")
@@ -54,4 +61,5 @@ async def handle_message(update, context):
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    logging.info("رادار رعد جاهز للعمل!")
     app.run_polling()
