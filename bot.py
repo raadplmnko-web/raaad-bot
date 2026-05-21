@@ -1,118 +1,93 @@
 import logging
-import os
 import yfinance as yf
 import pandas as pd
 from telegram.ext import ApplicationBuilder, MessageHandler, filters
 
-# =========================================================
-# إعدادات البوت
-# =========================================================
 logging.basicConfig(level=logging.INFO)
-
-# تم تثبيت التوكن هنا لضمان عمل البوت فوراً في Railway
 TOKEN = "8809048554:AAEidzYK2Ktvd1xDAdnEoAAb1WnfWQeHn1w"
 
-if not TOKEN:
-    raise ValueError("❌ خطأ: لم يتم العثور على التوكن")
-
-# =========================================================
-# حساب مؤشر السيولة MFI
-# =========================================================
+# الدوال الحسابية المعتادة
 def calculate_mfi(df, period=14):
-    typical_price = (df['High'] + df['Low'] + df['Close']) / 3
-    money_flow = typical_price * df['Volume']
-    positive_flow = money_flow.where(typical_price > typical_price.shift(1), 0)
-    negative_flow = money_flow.where(typical_price < typical_price.shift(1), 0)
-    positive_mf = positive_flow.rolling(period).sum()
-    negative_mf = negative_flow.rolling(period).sum()
-    mfi = 100 - (100 / (1 + (positive_mf / negative_mf)))
-    return float(mfi.iloc[-1])
+    typical = (df['High'] + df['Low'] + df['Close']) / 3
+    flow = typical * df['Volume']
+    pos = flow.where(typical > typical.shift(1), 0).rolling(period, min_periods=1).sum()
+    neg = flow.where(typical < typical.shift(1), 0).rolling(period, min_periods=1).sum()
+    if neg.iloc[-1] == 0: return 50.0 
+    return float((100 - (100 / (1 + (pos / neg)))).iloc[-1])
 
-# =========================================================
-# حساب ATR الحقيقي
-# =========================================================
 def calculate_atr(df, period=14):
-    high_low = df['High'] - df['Low']
-    high_close = abs(df['High'] - df['Close'].shift())
-    low_close = abs(df['Low'] - df['Close'].shift())
-    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    atr = tr.rolling(period).mean()
-    return float(atr.iloc[-1])
+    tr = pd.concat([df['High']-df['Low'], abs(df['High']-df['Close'].shift()), abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
+    return float(tr.rolling(period, min_periods=1).mean().iloc[-1])
 
-# =========================================================
-# تحليل السهم - رادار رعد V31
-# =========================================================
-def analyze_raad_v31(ticker):
+def analyze_raad_v47(ticker):
     try:
         ticker = ticker.upper().strip()
         df = yf.Ticker(ticker).history(period="5d", interval="5m")
-        if df.empty: return "❌ لم أجد بيانات لهذا السهم."
+        if len(df) < 12: return "⚠️ بيانات غير كافية."
         
         close = float(df['Close'].iloc[-1])
-        volume = float(df['Volume'].iloc[-1])
-        avg_volume = float(df['Volume'].rolling(20).mean().iloc[-1])
+        vol = float(df['Volume'].iloc[-1])
+        avg_vol = float(df['Volume'].rolling(20, min_periods=1).mean().iloc[-1])
+        
+        if avg_vol < 30000: return f"❌ {ticker}: سيولة ضعيفة"
+        
+        # الزخم
+        momentum3 = ((close - float(df['Close'].iloc[-4])) / float(df['Close'].iloc[-4])) * 100
+        momentum6 = ((close - float(df['Close'].iloc[-7])) / float(df['Close'].iloc[-7])) * 100
+        momentum12 = ((close - float(df['Close'].iloc[-10])) / float(df['Close'].iloc[-10])) * 100
+        
+        # فلتر الأمان
+        if momentum3 < -1.5: return f"⚠️ {ticker}: ضعف قوي"
+        if abs(momentum3) < 0.4: return f"❌ {ticker}: حركة ضعيفة"
         
         mfi = calculate_mfi(df)
         atr = calculate_atr(df)
-        ema9 = float(df['Close'].ewm(span=9).mean().iloc[-1])
-        ema20 = float(df['Close'].ewm(span=20).mean().iloc[-1])
         
-        uptrend = close > ema9 > ema20
-        downtrend = close < ema20
-        high_volume = volume > avg_volume * 1.5
-        super_volume = volume > avg_volume * 3
+        # --- نظام النقاط V47 ---
+        entry_score = 0
         
-        # فلترة
-        if close < 0.20 or avg_volume < 500000:
-            return f"⚠️ {ticker}\nسهم غير مناسب للمضاربة (سيولة ضعيفة أو سعر متدني)."
-
-        # السكور والقرار
-        first_close = float(df['Close'].iloc[0])
-        day_change = ((close - first_close) / first_close) * 100
+        # 1. الاتجاه والتسارع
+        trend_strength = momentum3 - momentum6
+        if trend_strength > 0.3: entry_score += 1
+        elif trend_strength < -0.3: entry_score -= 1
         
-        score = 0
-        if mfi > 55: score += 1
-        if mfi > 70: score += 2
-        if high_volume: score += 2
-        if super_volume: score += 2
-        if uptrend: score += 3
-        if day_change > 5: score += 2
+        if (momentum3 - momentum12) > 0.3: entry_score += 1
         
-        # المنطق النهائي
-        if uptrend and super_volume and mfi > 75 and day_change > 7:
-            decision = "🔥 دخول انفجار زخم"
-        elif uptrend and high_volume and mfi > 60:
-            decision = "⚡ دخول مؤكد"
-        elif uptrend and mfi > 50:
-            decision = "👀 مراقبة إيجابية"
-        elif downtrend:
-            decision = "🚫 لا تدخل (اتجاه هابط)"
-        else:
-            decision = "⏳ انتظر السيولة"
+        # 2. الاختراق والتأكيد المطور
+        breakout = (vol > avg_vol * 2.5) and (momentum3 > 1.5) and (mfi > 55)
+        if breakout:
+            entry_score += 1 # أساس الاختراق
+            if momentum6 > 0: entry_score += 1
+            if vol > avg_vol * 3: entry_score += 1
             
-        strength = "🚀 انفجار" if score >= 10 else "🔥 قوي" if score >= 7 else "⚡ متوسط" if score >= 5 else "⚠️ ضعيف"
+        # 3. تراصف الزخم
+        if momentum3 > momentum6 > momentum12:
+            entry_score += 1
+            
+        # 4. MFI
+        if 50 < mfi < 70: entry_score += 1
+        elif mfi >= 70: entry_score += 2
         
-        return (f"⚡ رادار رعد الاحترافي V31\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
+        # --- الفلاتر النهائية ---
+        if entry_score < 3: return f"❌ {ticker}: ضعيف جداً (نقاط: {entry_score})"
+        elif entry_score < 4: return f"👀 {ticker}: قريب من الدخول (نقاط: {entry_score})"
+        
+        decision = "🚀 دخول انفجار" if entry_score >= 6 else "⚡ دخول سكالب"
+        tp, sl = close + (atr * 0.9), close - (atr * 0.6)
+            
+        return (f"⚡ رادار رعد V47\n"
                 f"🏷️ السهم: {ticker}\n"
-                f"💰 السعر: {close:.2f}\n"
-                f"📊 MFI: {mfi:.1f}\n"
-                f"📈 الحجم: {'🚀 انفجار' if super_volume else '🔥 قوي' if high_volume else '⚠️ ضعيف'}\n"
-                f"🚀 الحركة اليومية: {day_change:.2f}%\n"
+                f"📊 قوة الصفقة: {entry_score}\n"
                 f"🎯 القرار: {decision}\n"
-                f"💪 القوة: {strength} ({score}/12)\n"
-                f"🎯 هدف 1: {close + (atr * 0.7):.2f}\n"
-                f"🏆 هدف ذهبي: {close + (atr * 1.5):.2f}\n"
-                f"🛑 وقف الخسارة: {close - (atr * 1.0):.2f}\n"
-                f"━━━━━━━━━━━━━━━━━━")
+                f"🎯 هدف: {tp:.2f} | 🛑 وقف: {sl:.2f}")
+                
     except Exception as e:
-        return f"❌ خطأ: {str(e)[:50]}"
+        return f"❌ خطأ: {str(e)[:30]}"
 
 async def handle_message(update, context):
-    await update.message.reply_text(analyze_raad_v31(update.message.text))
+    await update.message.reply_text(analyze_raad_v47(update.message.text))
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    print("✅ رادار رعد V31 يعمل الآن...")
     app.run_polling()
